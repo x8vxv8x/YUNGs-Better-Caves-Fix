@@ -1,9 +1,8 @@
 package com.yungnickyoung.minecraft.bettercaves.world.carver.cave;
 
 import com.yungnickyoung.minecraft.bettercaves.BetterCaves;
-import com.yungnickyoung.minecraft.bettercaves.noise.NoiseColumn;
+import com.yungnickyoung.minecraft.bettercaves.noise.NoiseCube;
 import com.yungnickyoung.minecraft.bettercaves.noise.NoiseGen;
-import com.yungnickyoung.minecraft.bettercaves.noise.NoiseTuple;
 import com.yungnickyoung.minecraft.bettercaves.util.BetterCavesUtils;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverSettings;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverUtils;
@@ -13,10 +12,6 @@ import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.ChunkPrimer;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * BetterCaves Cave carver
@@ -72,7 +67,7 @@ public class CaveCarver implements ICarver {
         }
     }
 
-    public void carveColumn(ChunkPrimer primer, BlockPos colPos, int topY, NoiseColumn noises, IBlockState liquidBlock, boolean flooded) {
+    public void carveColumn(ChunkPrimer primer, BlockPos colPos, int topY, NoiseCube noises, int noiseX, int noiseZ, IBlockState liquidBlock, boolean flooded) {
         int localX = BetterCavesUtils.getLocal(colPos.getX());
         int localZ = BetterCavesUtils.getLocal(colPos.getZ());
 
@@ -96,24 +91,24 @@ public class CaveCarver implements ICarver {
             transitionBoundary = 1;
 
         // Pre-compute thresholds to ensure accuracy during pre-processing
-        Map<Integer, Float> thresholds = generateThresholds(topY, bottomY, transitionBoundary);
+        float[] thresholds = generateThresholds(topY, bottomY, transitionBoundary);
 
         // Do some pre-processing on the noises to facilitate better cave generation.
         // Basically this makes caves taller to give players more headroom.
         // See the javadoc for the function for more info.
         if (this.enableYAdjust)
-            preprocessCaveNoiseCol(noises, topY, bottomY, thresholds, settings.getNumGens());
+            preprocessCaveNoiseCol(noises, noiseX, noiseZ, topY, bottomY, thresholds, settings.getNumGens());
 
         /* =============== Dig out caves and caverns in this column, based on noise values =============== */
         for (int y = topY; y >= bottomY; y--) {
             if (y <= settings.getLiquidAltitude() && liquidBlock == null)
                 break;
 
-            List<Double> noiseBlock = noises.get(y).getNoiseValues();
             boolean digBlock = true;
+            float threshold = thresholds[y - bottomY];
 
-            for (double noise : noiseBlock) {
-                if (noise < thresholds.get(y)) {
+            for (int i = 0; i < noises.getNumGenerators(); i++) {
+                if (noises.get(noiseX, noiseZ, y, i) < threshold) {
                     digBlock = false;
                     break;
                 }
@@ -137,22 +132,22 @@ public class CaveCarver implements ICarver {
      * This function adjusts the noise value of blocks based on the noise values of blocks below.
      * This has the effect of raising the ceilings of caves, giving the player more headroom.
      * Big shoutouts to the guys behind Worley's Caves for this great idea.
-     * @param noises The column of noises as a map, mapping the y-coordinate of a block to its NoiseTuple
+     * @param noises The cube containing all interpolated noise values for this subchunk.
+     * @param noiseX Local x index in the noise cube.
+     * @param noiseZ Local z index in the noise cube.
      * @param topY Top y-coordinate of the noise column
      * @param bottomY Bottom y-coordinate of the noise column
-     * @param thresholds Map of y-coordinates to noise thresholds. This is the output of the generateThresholds method.
-     * @param numGens Number of noise values to create per block. This is equal to the number of floats held
-     *                in each NoiseTuple for each block in the noise column.
+     * @param thresholds Array of y-coordinate noise thresholds, indexed by y - bottomY.
+     * @param numGens Number of noise values to create per block.
      */
-    private void preprocessCaveNoiseCol(NoiseColumn noises, int topY, int bottomY, Map<Integer, Float> thresholds, int numGens) {
+    private void preprocessCaveNoiseCol(NoiseCube noises, int noiseX, int noiseZ, int topY, int bottomY, float[] thresholds, int numGens) {
         /* Adjust simplex noise values based on blocks above in order to give the player more headroom */
         for (int realY = topY; realY >= bottomY; realY--) {
-            NoiseTuple noiseBlock = noises.get(realY);
-            float threshold = thresholds.get(realY);
+            float threshold = thresholds[realY - bottomY];
 
             boolean valid = true;
-            for (double noise : noiseBlock.getNoiseValues()) {
-                if (noise < threshold) {
+            for (int i = 0; i < numGens; i++) {
+                if (noises.get(noiseX, noiseZ, realY, i) < threshold) {
                     valid = false;
                     break;
                 }
@@ -165,16 +160,20 @@ public class CaveCarver implements ICarver {
 
                 // Adjust block one above
                 if (realY < topY) {
-                    NoiseTuple tupleAbove = noises.get(realY + 1);
-                    for (int i = 0; i < numGens; i++)
-                        tupleAbove.set(i, ((1 - f1) * tupleAbove.get(i)) + (f1 * noiseBlock.get(i)));
+                    for (int i = 0; i < numGens; i++) {
+                        double noise = noises.get(noiseX, noiseZ, realY, i);
+                        double noiseAbove = noises.get(noiseX, noiseZ, realY + 1, i);
+                        noises.set(noiseX, noiseZ, realY + 1, i, ((1 - f1) * noiseAbove) + (f1 * noise));
+                    }
                 }
 
                 // Adjust block two above
                 if (realY < topY - 1) {
-                    NoiseTuple tupleTwoAbove = noises.get(realY + 2);
-                    for (int i = 0; i < numGens; i++)
-                        tupleTwoAbove.set(i, ((1 - f2) * tupleTwoAbove.get(i)) + (f2 * noiseBlock.get(i)));
+                    for (int i = 0; i < numGens; i++) {
+                        double noise = noises.get(noiseX, noiseZ, realY, i);
+                        double noiseTwoAbove = noises.get(noiseX, noiseZ, realY + 2, i);
+                        noises.set(noiseX, noiseZ, realY + 2, i, ((1 - f2) * noiseTwoAbove) + (f2 * noise));
+                    }
                 }
             }
         }
@@ -187,15 +186,15 @@ public class CaveCarver implements ICarver {
      * @param topY Top y-coordinate of the column
      * @param bottomY Bottom y-coordinate of the column
      * @param transitionBoundary The y-coordinate at which the caves start to close off
-     * @return Map of y-coordinates to noise thresholds
+     * @return Array of y-coordinate noise thresholds, indexed by y - bottomY.
      */
-    private Map<Integer, Float> generateThresholds(int topY, int bottomY, int transitionBoundary) {
-        Map<Integer, Float> thresholds = new HashMap<>();
+    private float[] generateThresholds(int topY, int bottomY, int transitionBoundary) {
+        float[] thresholds = new float[topY - bottomY + 1];
         for (int realY = bottomY; realY <= topY; realY++) {
             float noiseThreshold = settings.getNoiseThreshold();
             if (realY >= transitionBoundary)
                 noiseThreshold *= (1 + .3f * ((float)(realY - transitionBoundary) / (topY - transitionBoundary)));
-            thresholds.put(realY, noiseThreshold);
+            thresholds[realY - bottomY] = noiseThreshold;
         }
 
         return thresholds;

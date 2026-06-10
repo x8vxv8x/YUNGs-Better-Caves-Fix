@@ -2,7 +2,7 @@ package com.yungnickyoung.minecraft.bettercaves.world.carver.cavern;
 
 import com.yungnickyoung.minecraft.bettercaves.BetterCaves;
 import com.yungnickyoung.minecraft.bettercaves.enums.CavernType;
-import com.yungnickyoung.minecraft.bettercaves.noise.NoiseColumn;
+import com.yungnickyoung.minecraft.bettercaves.noise.NoiseCube;
 import com.yungnickyoung.minecraft.bettercaves.noise.NoiseGen;
 import com.yungnickyoung.minecraft.bettercaves.util.BetterCavesUtils;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverSettings;
@@ -13,8 +13,6 @@ import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.ChunkPrimer;
-
-import java.util.List;
 
 /**
  * BetterCaves Cavern carver.
@@ -51,7 +49,7 @@ public class CavernCarver implements ICarver {
         }
     }
 
-    public void carveColumn(ChunkPrimer primer, BlockPos colPos, int topY, float smoothAmp, NoiseColumn noises, IBlockState liquidBlock, boolean flooded) {
+    public void carveColumn(ChunkPrimer primer, BlockPos colPos, int topY, float smoothAmp, NoiseCube noises, int noiseX, int noiseZ, IBlockState liquidBlock, boolean flooded) {
         int localX = BetterCavesUtils.getLocal(colPos.getX());
         int localZ = BetterCavesUtils.getLocal(colPos.getZ());
 
@@ -86,14 +84,12 @@ public class CavernCarver implements ICarver {
             if (y <= settings.getLiquidAltitude() && liquidBlock == null)
                 break;
 
-            List<Double> noiseBlock;
             boolean digBlock = false;
 
-            // Compute a single noise value to represent all the noise values in the NoiseTuple
+            // Compute a single noise value to represent all noise values for this block.
             float noise = 1;
-            noiseBlock = noises.get(y).getNoiseValues();
-            for (double n : noiseBlock)
-                noise *= n;
+            for (int i = 0; i < noises.getNumGenerators(); i++)
+                noise *= noises.get(noiseX, noiseZ, y, i);
 
             // Adjust threshold if we're in the transition range to provide smoother transition into ceiling
             float noiseThreshold = settings.getNoiseThreshold();

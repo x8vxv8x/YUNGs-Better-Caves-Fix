@@ -6,7 +6,6 @@ import com.yungnickyoung.minecraft.bettercaves.config.BCSettings;
 import com.yungnickyoung.minecraft.bettercaves.enums.CaveType;
 import com.yungnickyoung.minecraft.bettercaves.enums.RegionSize;
 import com.yungnickyoung.minecraft.bettercaves.noise.FastNoise;
-import com.yungnickyoung.minecraft.bettercaves.noise.NoiseColumn;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverNoiseRange;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.ICarver;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.cave.CaveCarver;
@@ -200,8 +199,7 @@ public class CaveCarverController {
                                 if (range.getNoiseCube() == null) {
                                     range.setNoiseCube(carver.getNoiseGen().interpolateNoiseCube(startPos, endPos, bottomY, maxHeight));
                                 }
-                                NoiseColumn noiseColumn = range.getNoiseCube().get(offsetX).get(offsetZ);
-                                carver.carveColumn(primer, colPos, topY, noiseColumn, liquidBlock, flooded);
+                                carver.carveColumn(primer, colPos, topY, range.getNoiseCube(), offsetX, offsetZ, liquidBlock, flooded);
                                 break;
                             }
                             else if (range.getCarver() instanceof VanillaCaveCarver) {
