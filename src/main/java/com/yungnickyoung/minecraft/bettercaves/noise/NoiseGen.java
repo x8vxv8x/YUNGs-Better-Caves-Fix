@@ -4,9 +4,6 @@ import com.yungnickyoung.minecraft.bettercaves.config.BCSettings;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Class used to generate noise values for blocks.
  * This class serves as an interface between Better Caves and FastNoise.
@@ -26,8 +23,8 @@ public class NoiseGen {
     /** Determines how horizontally large and stretched out caves are */
     private float xzCompression;
 
-    /** List of all primary noise generators, one for each octave */
-    private List<INoiseLibrary> listNoiseGens = new ArrayList<>();
+    /** Primary noise generators, one for each octave */
+    private final INoiseLibrary[] noiseGens;
 
     /**
      * @param world World this generaton function will be used in
@@ -45,6 +42,7 @@ public class NoiseGen {
         this.numGenerators = numGenerators;
         this.yCompression = yComp;
         this.xzCompression = xzComp;
+        this.noiseGens = new INoiseLibrary[numGenerators];
         initializeNoiseGens(isFastNoise);
     }
 
@@ -61,11 +59,11 @@ public class NoiseGen {
      * @return NoiseCube
      */
     public NoiseCube interpolateNoiseCube(BlockPos startPos, BlockPos endPos, int minHeight, int maxHeight) {
+        return interpolateNoiseCube(startPos.getX(), endPos.getX(), startPos.getZ(), endPos.getZ(), minHeight, maxHeight);
+    }
+
+    public NoiseCube interpolateNoiseCube(int startX, int endX, int startZ, int endZ, int minHeight, int maxHeight) {
         float startCoeff, endCoeff;
-        int startX       = startPos.getX();
-        int endX         = endPos.getX();
-        int startZ       = startPos.getZ();
-        int endZ         = endPos.getZ();
         int subChunkSize = endX - startX + 1;
         float noiseStartX = startX * xzCompression;
         float noiseEndX = endX * xzCompression;
@@ -77,11 +75,11 @@ public class NoiseGen {
         for (int y = minHeight; y <= maxHeight; y++) {
             float noiseY = y * yCompression;
             for (int i = 0; i < numGenerators; i++) {
-                INoiseLibrary noiseGen = listNoiseGens.get(i);
-                cube.set(0, 0, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseStartZ));
-                cube.set(0, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseEndZ));
-                cube.set(subChunkSize - 1, 0, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseStartZ));
-                cube.set(subChunkSize - 1, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseEndZ));
+                INoiseLibrary noiseGen = noiseGens[i];
+                cube.setUnchecked(0, 0, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseStartZ));
+                cube.setUnchecked(0, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseEndZ));
+                cube.setUnchecked(subChunkSize - 1, 0, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseStartZ));
+                cube.setUnchecked(subChunkSize - 1, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseEndZ));
             }
         }
 
@@ -92,17 +90,17 @@ public class NoiseGen {
 
             for (int y = minHeight; y <= maxHeight; y++) {
                 for (int i = 0; i < numGenerators; i++) {
-                    double startValue = cube.get(0, 0, y, i);
-                    double endValue = cube.get(subChunkSize - 1, 0, y, i);
-                    cube.set(x, 0, y, i, startValue * startCoeff + endValue * endCoeff);
+                    double startValue = cube.getUnchecked(0, 0, y, i);
+                    double endValue = cube.getUnchecked(subChunkSize - 1, 0, y, i);
+                    cube.setUnchecked(x, 0, y, i, startValue * startCoeff + endValue * endCoeff);
                 }
             }
 
             for (int y = minHeight; y <= maxHeight; y++) {
                 for (int i = 0; i < numGenerators; i++) {
-                    double startValue = cube.get(0, subChunkSize - 1, y, i);
-                    double endValue = cube.get(subChunkSize - 1, subChunkSize - 1, y, i);
-                    cube.set(x, subChunkSize - 1, y, i, startValue * startCoeff + endValue * endCoeff);
+                    double startValue = cube.getUnchecked(0, subChunkSize - 1, y, i);
+                    double endValue = cube.getUnchecked(subChunkSize - 1, subChunkSize - 1, y, i);
+                    cube.setUnchecked(x, subChunkSize - 1, y, i, startValue * startCoeff + endValue * endCoeff);
                 }
             }
         }
@@ -115,9 +113,9 @@ public class NoiseGen {
 
                 for (int y = minHeight; y <= maxHeight; y++) {
                     for (int i = 0; i < numGenerators; i++) {
-                        double startValue = cube.get(x, 0, y, i);
-                        double endValue = cube.get(x, subChunkSize - 1, y, i);
-                        cube.set(x, z, y, i, startValue * startCoeff + endValue * endCoeff);
+                        double startValue = cube.getUnchecked(x, 0, y, i);
+                        double endValue = cube.getUnchecked(x, subChunkSize - 1, y, i);
+                        cube.setUnchecked(x, z, y, i, startValue * startCoeff + endValue * endCoeff);
                     }
                 }
             }
@@ -145,7 +143,7 @@ public class NoiseGen {
                 noiseGen.SetFractalOctaves(noiseSettings.getOctaves());
                 noiseGen.SetFractalGain(noiseSettings.getGain());
                 noiseGen.SetFrequency(noiseSettings.getFrequency());
-                listNoiseGens.add(noiseGen);
+                noiseGens[i] = noiseGen;
             }
         }
         else {
@@ -155,7 +153,7 @@ public class NoiseGen {
                 noiseGen.setOctaves(noiseSettings.getOctaves());
                 noiseGen.setFrequency(noiseSettings.getFrequency());
                 noiseGen.setLacunarity(2.0);
-                listNoiseGens.add(noiseGen);
+                noiseGens[i] = noiseGen;
             }
         }
     }

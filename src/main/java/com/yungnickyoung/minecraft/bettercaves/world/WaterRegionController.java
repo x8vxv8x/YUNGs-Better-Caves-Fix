@@ -51,21 +51,20 @@ public class WaterRegionController {
     public IBlockState[][] getLiquidBlocksForChunk(int chunkX, int chunkZ) {
         rand.setSeed(worldSeed ^ chunkX ^ chunkZ);
         IBlockState[][] blocks = new IBlockState[16][16];
+        int baseX = chunkX * 16;
+        int baseZ = chunkZ * 16;
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                int realX = chunkX * 16 + x;
-                int realZ = chunkZ * 16 + z;
-                BlockPos pos = new BlockPos(realX, 1, realZ);
-                blocks[x][z] = getLiquidBlockAtPos(rand, pos);
+                blocks[x][z] = getLiquidBlockAtPos(rand, baseX + x, baseZ + z);
             }
         }
         return blocks;
     }
 
-    private IBlockState getLiquidBlockAtPos(Random rand, BlockPos blockPos) {
+    private IBlockState getLiquidBlockAtPos(Random rand, int blockX, int blockZ) {
         IBlockState liquidBlock = lavaBlock;
         if (waterRegionThreshold > -1f) { // Don't bother calculating noise if water regions are disabled
-            float waterRegionNoise = waterRegionController.GetNoise(blockPos.getX(), blockPos.getZ());
+            float waterRegionNoise = waterRegionController.GetNoise(blockX, blockZ);
 
             // If water region threshold check is passed, change liquid block to water
             float randOffset = rand.nextFloat() * SMOOTH_DELTA + SMOOTH_RANGE;

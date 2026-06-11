@@ -11,6 +11,7 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.biome.Biome;
 import net.minecraft.world.chunk.ChunkPrimer;
 
 /**
@@ -68,10 +69,14 @@ public class CaveCarver implements ICarver {
     }
 
     public void carveColumn(ChunkPrimer primer, BlockPos colPos, int topY, NoiseCube noises, int noiseX, int noiseZ, IBlockState liquidBlock, boolean flooded) {
+        int worldX = colPos.getX();
+        int worldZ = colPos.getZ();
         int localX = BetterCavesUtils.getLocal(colPos.getX());
         int localZ = BetterCavesUtils.getLocal(colPos.getZ());
-
-        IBlockState airBlockState;
+        Biome biome = world.getBiome(colPos);
+        IBlockState airBlockState = Blocks.AIR.getDefaultState();
+        IBlockState airState = Blocks.AIR.getDefaultState();
+        IBlockState waterBlockState = Blocks.WATER.getDefaultState();
 
         // Validate vars
         if (localX < 0 || localX > 15)
@@ -114,15 +119,14 @@ public class CaveCarver implements ICarver {
                 }
             }
 
-            airBlockState = flooded && y < world.getSeaLevel() ? Blocks.WATER.getDefaultState() : Blocks.AIR.getDefaultState();
-            BlockPos blockPos = new BlockPos(localX, y, localZ);
+            airBlockState = flooded && y < world.getSeaLevel() ? waterBlockState : airState;
 
             // Dig out the block if it passed the threshold check, using the debug visualizer if enabled
             if (settings.isEnableDebugVisualizer()) {
-                CarverUtils.debugDigBlock(primer, blockPos, settings.getDebugBlock(), digBlock);
+                CarverUtils.debugDigBlock(primer, worldX, y, worldZ, settings.getDebugBlock(), digBlock);
             }
             else if (digBlock) {
-                CarverUtils.digBlock(settings.getWorld(), primer, blockPos, airBlockState, liquidBlock, settings.getLiquidAltitude(), settings.isReplaceFloatingGravel());
+                CarverUtils.digBlock(settings.getWorld(), primer, worldX, y, worldZ, biome, airBlockState, liquidBlock, settings.getLiquidAltitude(), settings.isReplaceFloatingGravel());
             }
         }
     }

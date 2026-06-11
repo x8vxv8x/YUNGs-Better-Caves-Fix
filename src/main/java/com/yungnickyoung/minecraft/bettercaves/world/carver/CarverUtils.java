@@ -44,13 +44,15 @@ public class CarverUtils {
      * @param liquidAltitude altitude at and below which air is replaced with liquidBlockState
      */
     public static void digBlock(World world, ChunkPrimer primer, BlockPos blockPos, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        int localX = BetterCavesUtils.getLocal(blockPos.getX());
-        int localZ = BetterCavesUtils.getLocal(blockPos.getZ());
-        int y = blockPos.getY();
+        digBlock(world, primer, blockPos.getX(), blockPos.getY(), blockPos.getZ(), world.getBiome(blockPos), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
+    }
+
+    public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, Biome biome, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
+        int localX = BetterCavesUtils.getLocal(x);
+        int localZ = BetterCavesUtils.getLocal(z);
 
         IBlockState blockState = primer.getBlockState(localX, y, localZ);
         IBlockState blockStateAbove = primer.getBlockState(localX, y + 1, localZ);
-        Biome biome = world.getBiome(blockPos);
         Block biomeTopBlock = biome.topBlock.getBlock();
         Block biomeFillerBlock = biome.fillerBlock.getBlock();
 
@@ -63,10 +65,10 @@ public class CarverUtils {
             }
             else {
                 // Check for adjacent water blocks to avoid breaking into lakes or oceans
-                if (airBlockState == AIR && isWaterAdjacent(primer, blockPos)) return;
+                if (airBlockState == AIR && isWaterAdjacent(primer, localX, y, localZ)) return;
 
                 // Adjust block below if block removed is biome top block
-                if (isTopBlock(world, primer, blockPos) && canReplaceBlock(primer.getBlockState(localX, y - 1, localZ), AIR))
+                if (blockState == biome.topBlock && canReplaceBlock(primer.getBlockState(localX, y - 1, localZ), AIR))
                     primer.setBlockState(localX, y - 1, localZ, biome.topBlock);
 
                 // Replace floating sand with sandstone
@@ -86,15 +88,17 @@ public class CarverUtils {
     }
 
     public static void digBlock(World world, ChunkPrimer primer, BlockPos blockPos, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        digBlock(world, primer, blockPos, Blocks.AIR.getDefaultState(), liquidBlockState, liquidAltitude, replaceGravel);
+        digBlock(world, primer, blockPos, AIR, liquidBlockState, liquidAltitude, replaceGravel);
     }
 
     public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        digBlock(world, primer, new BlockPos(x, y, z), liquidBlockState, liquidAltitude, replaceGravel);
+        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(x, y, z);
+        digBlock(world, primer, x, y, z, world.getBiome(blockPos), AIR, liquidBlockState, liquidAltitude, replaceGravel);
     }
 
     public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        digBlock(world, primer, new BlockPos(x, y, z), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
+        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(x, y, z);
+        digBlock(world, primer, x, y, z, world.getBiome(blockPos), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
     }
 
     /**
@@ -105,20 +109,19 @@ public class CarverUtils {
      * @param blockState The blockState to set dug out blocks to
      */
     public static void debugDigBlock(ChunkPrimer primer, BlockPos blockPos, IBlockState blockState, boolean digBlock) {
-        int localX = BetterCavesUtils.getLocal(blockPos.getX());
-        int localZ = BetterCavesUtils.getLocal(blockPos.getZ());
-        int y = blockPos.getY();
+        debugDigBlock(primer, blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockState, digBlock);
+    }
+
+    public static void debugDigBlock(ChunkPrimer primer, int x, int y, int z, IBlockState blockState, boolean digBlock) {
+        int localX = BetterCavesUtils.getLocal(x);
+        int localZ = BetterCavesUtils.getLocal(z);
 
         if (DEBUG_BLOCKS.contains(primer.getBlockState(localX, y, localZ))) return;
 
         if (digBlock)
             primer.setBlockState(localX, y, localZ, blockState);
         else
-            primer.setBlockState(localX, y, localZ, Blocks.AIR.getDefaultState());
-    }
-
-    public static void debugDigBlock(ChunkPrimer primer, int x, int y, int z, IBlockState blockState, boolean digBlock) {
-        debugDigBlock(primer, new BlockPos(x, y, z), blockState, digBlock);
+            primer.setBlockState(localX, y, localZ, AIR);
     }
 
     /**
@@ -186,11 +189,7 @@ public class CarverUtils {
                 && blockStateAbove.getMaterial() != Material.WATER;
     }
 
-    private static boolean isWaterAdjacent(ChunkPrimer primer, BlockPos blockPos) {
-        int localX = BetterCavesUtils.getLocal(blockPos.getX());
-        int localZ = BetterCavesUtils.getLocal(blockPos.getZ());
-        int y = blockPos.getY();
-
+    private static boolean isWaterAdjacent(ChunkPrimer primer, int localX, int y, int localZ) {
         return primer.getBlockState(localX, y + 1, localZ).getMaterial() == Material.WATER
                 || localX < 15 && primer.getBlockState(localX + 1, y, localZ).getMaterial() == Material.WATER
                 || localX > 0 && primer.getBlockState(localX - 1, y, localZ).getMaterial() == Material.WATER

@@ -9,6 +9,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.chunk.ChunkPrimer;
+import net.minecraftforge.common.BiomeDictionary;
 
 import java.util.function.Predicate;
 
@@ -44,19 +45,10 @@ public class BetterCavesUtils {
      * @return The y-coordinate of the surface block
      */
     public static int searchSurfaceAltitudeInRangeForColumn(ChunkPrimer primer, int localX, int localZ, int topY, int bottomY) {
-        // Edge case: blocks go all the way up to build height
-        if (topY == 255
-                && primer.getBlockState(localX, 255, localZ) != Blocks.AIR.getDefaultState()
-                && primer.getBlockState(localX, 255, localZ).getMaterial() != Material.WATER)
-            return 255;
-
-        for (int y = bottomY; y <= topY; y++) {
+        for (int y = topY; y >= bottomY; y--) {
             IBlockState blockState = primer.getBlockState(localX, y, localZ);
-            if (
-                    blockState == Blocks.AIR.getDefaultState()
-                    || blockState.getMaterial() == Material.WATER
-            )
-                return y;
+            if (blockState != Blocks.AIR.getDefaultState() && blockState.getMaterial() != Material.WATER)
+                return Math.min(y + 1, topY);
         }
 
         return 1; // Surface somehow not found
@@ -110,6 +102,55 @@ public class BetterCavesUtils {
                     if (j != 0 && i != j) {
                         checkpos.setPos(pos).move(direction, i).move(direction.rotateYCCW(), j);
                         if (isTargetBiome.test(world.getBiome(checkpos))) {
+                            return (float)(i + j) / (2 * radius);
+                        }
+                    }
+                }
+            }
+        }
+
+        return 1;
+    }
+
+    /**
+     * Builds a chunk-local ocean mask with a border so nearby biome checks can avoid repeatedly querying the world.
+     */
+    public static boolean[][] getOceanMask(World world, int chunkX, int chunkZ, int border) {
+        int width = 16 + border * 2;
+        boolean[][] oceanMask = new boolean[width][width];
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        int startX = chunkX * 16 - border;
+        int startZ = chunkZ * 16 - border;
+
+        for (int localX = 0; localX < width; localX++) {
+            for (int localZ = 0; localZ < width; localZ++) {
+                pos.setPos(startX + localX, 1, startZ + localZ);
+                oceanMask[localX][localZ] = BiomeDictionary.hasType(world.getBiome(pos), BiomeDictionary.Type.OCEAN);
+            }
+        }
+
+        return oceanMask;
+    }
+
+    /**
+     * Cached-mask version of biomeDistanceFactor for chunk-local lookups.
+     */
+    public static float biomeDistanceFactor(int localX, int localZ, int radius, boolean[][] oceanMask, boolean targetIsOcean) {
+        int centerX = localX + radius;
+        int centerZ = localZ + radius;
+
+        for (int i = 1; i <= radius; i++) {
+            for (int j = 0; j <= i; j++) {
+                for (EnumFacing direction : EnumFacing.Plane.HORIZONTAL) {
+                    int checkX = centerX + direction.getXOffset() * i + direction.rotateY().getXOffset() * j;
+                    int checkZ = centerZ + direction.getZOffset() * i + direction.rotateY().getZOffset() * j;
+                    if (oceanMask[checkX][checkZ] == targetIsOcean) {
+                        return (float)(i + j) / (2 * radius);
+                    }
+                    if (j != 0 && i != j) {
+                        checkX = centerX + direction.getXOffset() * i + direction.rotateYCCW().getXOffset() * j;
+                        checkZ = centerZ + direction.getZOffset() * i + direction.rotateYCCW().getZOffset() * j;
+                        if (oceanMask[checkX][checkZ] == targetIsOcean) {
                             return (float)(i + j) / (2 * radius);
                         }
                     }

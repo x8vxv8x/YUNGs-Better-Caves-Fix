@@ -60,33 +60,53 @@ public class MapGenBetterCaves extends MapGenCaves {
         if (config.flattenBedrock.get())
             FlattenBedrock.flattenBedrock(primer, config.bedrockWidth.get());
 
-        // Determine surface altitudes in this chunk
-        int[][] surfaceAltitudes = new int[16][16];
-        for (int subX = 0; subX < 16 / BCSettings.SUB_CHUNK_SIZE; subX++) {
-            for (int subZ = 0; subZ < 16 / BCSettings.SUB_CHUNK_SIZE; subZ++) {
-                int startX = subX * BCSettings.SUB_CHUNK_SIZE;
-                int startZ = subZ * BCSettings.SUB_CHUNK_SIZE;
-                for (int offsetX = 0; offsetX < BCSettings.SUB_CHUNK_SIZE; offsetX++) {
-                    for (int offsetZ = 0; offsetZ < BCSettings.SUB_CHUNK_SIZE; offsetZ++) {
-                        int surfaceHeight;
-                        if (config.overrideSurfaceDetection.get()) {
-                            surfaceHeight = 1; // Don't waste time calculating surface height if it's going to be overridden anyway
+        boolean caveHasWork = caveCarverController.hasWork();
+        boolean cavernHasWork = cavernCarverController.hasWork();
+        boolean needsSurfaceAltitudes = (caveHasWork && caveCarverController.needsSurfaceAltitudes())
+            || (cavernHasWork && cavernCarverController.needsSurfaceAltitudes());
+        boolean needsOceanMask = (caveHasWork && caveCarverController.needsOceanMask())
+            || (cavernHasWork && cavernCarverController.needsOceanMask());
+        boolean needsLiquidBlocks = caveHasWork || cavernHasWork;
+
+        int[][] surfaceAltitudes = null;
+        if (needsSurfaceAltitudes) {
+            surfaceAltitudes = new int[16][16];
+            for (int subX = 0; subX < 16 / BCSettings.SUB_CHUNK_SIZE; subX++) {
+                for (int subZ = 0; subZ < 16 / BCSettings.SUB_CHUNK_SIZE; subZ++) {
+                    int startX = subX * BCSettings.SUB_CHUNK_SIZE;
+                    int startZ = subZ * BCSettings.SUB_CHUNK_SIZE;
+                    for (int offsetX = 0; offsetX < BCSettings.SUB_CHUNK_SIZE; offsetX++) {
+                        for (int offsetZ = 0; offsetZ < BCSettings.SUB_CHUNK_SIZE; offsetZ++) {
+                            int surfaceHeight;
+                            if (config.overrideSurfaceDetection.get()) {
+                                surfaceHeight = 1; // Don't waste time calculating surface height if it's going to be overridden anyway
+                            }
+                            else {
+                                surfaceHeight = BetterCavesUtils.getSurfaceAltitudeForColumn(primer, startX + offsetX, startZ + offsetZ);
+                            }
+                            surfaceAltitudes[startX + offsetX][startZ + offsetZ] = surfaceHeight;
                         }
-                        else {
-                            surfaceHeight = BetterCavesUtils.getSurfaceAltitudeForColumn(primer, startX + offsetX, startZ + offsetZ);
-                        }
-                        surfaceAltitudes[startX + offsetX][startZ + offsetZ] = surfaceHeight;
                     }
                 }
             }
         }
 
+        boolean[][] oceanMask = needsOceanMask
+            ? BetterCavesUtils.getOceanMask(worldIn, chunkX, chunkZ, 2)
+            : null;
+
         // Determine liquid blocks for this chunk
-        IBlockState[][] liquidBlocks = waterRegionController.getLiquidBlocksForChunk(chunkX, chunkZ);
+        IBlockState[][] liquidBlocks = needsLiquidBlocks
+            ? waterRegionController.getLiquidBlocksForChunk(chunkX, chunkZ)
+            : null;
 
         // Carve chunk
-        caveCarverController.carveChunk(primer, chunkX, chunkZ, surfaceAltitudes, liquidBlocks);
-        cavernCarverController.carveChunk(primer, chunkX, chunkZ, surfaceAltitudes, liquidBlocks);
+        if (caveHasWork) {
+            caveCarverController.carveChunk(primer, chunkX, chunkZ, surfaceAltitudes, liquidBlocks, oceanMask);
+        }
+        if (cavernHasWork) {
+            cavernCarverController.carveChunk(primer, chunkX, chunkZ, surfaceAltitudes, liquidBlocks, oceanMask);
+        }
     }
 
     /**

@@ -25,6 +25,14 @@ public class NoiseCube {
         values[index(x, z, y, generator)] = value;
     }
 
+    public double getUnchecked(int x, int z, int y, int generator) {
+        return values[uncheckedIndex(x, z, y, generator)];
+    }
+
+    public void setUnchecked(int x, int z, int y, int generator, double value) {
+        values[uncheckedIndex(x, z, y, generator)] = value;
+    }
+
     public int getNumGenerators() {
         return numGenerators;
     }
@@ -39,6 +47,10 @@ public class NoiseCube {
         if (generator < 0 || generator >= numGenerators)
             throw new IndexOutOfBoundsException("No corresponding noise value in NoiseCube for generator-index: " + generator);
 
+        return (((x * length + z) * height + (y - minY)) * numGenerators) + generator;
+    }
+
+    private int uncheckedIndex(int x, int z, int y, int generator) {
         return (((x * length + z) * height + (y - minY)) * numGenerators) + generator;
     }
 }
