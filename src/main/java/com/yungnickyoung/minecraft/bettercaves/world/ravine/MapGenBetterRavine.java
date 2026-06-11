@@ -7,7 +7,6 @@ import com.yungnickyoung.minecraft.bettercaves.world.WaterRegionController;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverUtils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.ChunkPrimer;
 import net.minecraft.world.gen.MapGenBase;
@@ -21,11 +20,15 @@ import javax.annotation.Nonnull;
  * Overrides MapGenRavine, tweaking it to work with config options.
  */
 public class MapGenBetterRavine extends MapGenRavine {
+    private static final IBlockState LAVA = Blocks.LAVA.getDefaultState();
+    private static final IBlockState WATER = Blocks.WATER.getDefaultState();
     private ConfigHolder config;
     private WaterRegionController waterRegionController;
     private MapGenBase defaultRavineGen;
+    private static final int OCEAN_MASK_BORDER = 2;
 
     IBlockState[][] currChunkLiquidBlocks;
+    boolean[][] currChunkOceanMask;
     int currChunkX, currChunkZ;
 
     public MapGenBetterRavine(InitMapGenEvent event) {
@@ -51,38 +54,38 @@ public class MapGenBetterRavine extends MapGenRavine {
 
     @Override
     protected void digBlock(ChunkPrimer primer, int x, int y, int z, int chunkX, int chunkZ, boolean foundTop) {
-        IBlockState liquidBlockState;
-        BlockPos pos = new BlockPos(x + chunkX * 16, y, z + chunkZ * 16);
+        int worldX = x + chunkX * 16;
+        int worldZ = z + chunkZ * 16;
+        int localX = BetterCavesUtils.getLocal(x);
+        int localZ = BetterCavesUtils.getLocal(z);
 
         if (currChunkLiquidBlocks == null || chunkX != currChunkX || chunkZ != currChunkZ) {
-            try {
-                currChunkLiquidBlocks = waterRegionController.getLiquidBlocksForChunk(chunkX, chunkZ);
-                liquidBlockState = currChunkLiquidBlocks[BetterCavesUtils.getLocal(x)][BetterCavesUtils.getLocal(z)];
-                currChunkX = chunkX;
-                currChunkZ = chunkZ;
-            } catch (Exception e) {
-                liquidBlockState = Blocks.LAVA.getDefaultState();
-            }
+            currChunkLiquidBlocks = waterRegionController.getLiquidBlocksForChunk(chunkX, chunkZ);
+            currChunkOceanMask = config.enableFloodedRavines.get()
+                ? BetterCavesUtils.getOceanMask(world, chunkX, chunkZ, OCEAN_MASK_BORDER)
+                : null;
+            currChunkX = chunkX;
+            currChunkZ = chunkZ;
         }
-        else {
-            try {
-                liquidBlockState = currChunkLiquidBlocks[BetterCavesUtils.getLocal(x)][BetterCavesUtils.getLocal(z)];
-            } catch (Exception e) {
-                liquidBlockState = Blocks.LAVA.getDefaultState();
-            }
+        IBlockState liquidBlockState = currChunkLiquidBlocks[localX][localZ];
+        if (liquidBlockState == null && y <= config.liquidAltitude.get()) {
+            liquidBlockState = LAVA;
         }
 
         // Don't dig boundaries between flooded and unflooded openings.
-        boolean flooded = config.enableFloodedRavines.get() && BiomeDictionary.hasType(world.getBiome(pos), BiomeDictionary.Type.OCEAN) && y < world.getSeaLevel();
+        boolean flooded = config.enableFloodedRavines.get()
+            && currChunkOceanMask != null
+            && currChunkOceanMask[localX + OCEAN_MASK_BORDER][localZ + OCEAN_MASK_BORDER]
+            && y < world.getSeaLevel();
         if (flooded) {
-            float smoothAmpFactor = BetterCavesUtils.biomeDistanceFactor(world, pos, 2, b -> !BiomeDictionary.hasType(b, BiomeDictionary.Type.OCEAN));
+            float smoothAmpFactor = BetterCavesUtils.biomeDistanceFactor(localX, localZ, OCEAN_MASK_BORDER, currChunkOceanMask, false);
             if (smoothAmpFactor <= .25f) { // Wall between flooded and normal caves.
                 return;
             }
         }
 
-        IBlockState airBlockState = flooded ? Blocks.WATER.getDefaultState() : AIR;
-        CarverUtils.digBlock(world, primer, pos, airBlockState, liquidBlockState, config.liquidAltitude.get(), config.replaceFloatingGravel.get());
+        IBlockState airBlockState = flooded ? WATER : AIR;
+        CarverUtils.digBlock(world, primer, worldX, y, worldZ, airBlockState, liquidBlockState, config.liquidAltitude.get(), config.replaceFloatingGravel.get());
     }
 
     // Disable built-in water block checks.

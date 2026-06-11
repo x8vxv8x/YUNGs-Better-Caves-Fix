@@ -6,7 +6,6 @@ import net.minecraft.world.World;
 
 public class CarverSettings {
     private World world;
-    private long  seed;
     private int   priority;
 
     /* ============================== Values determined through config ============================== */
@@ -30,23 +29,10 @@ public class CarverSettings {
 
     public CarverSettings(World world) {
         this.world = world;
-        this.seed = world.getSeed();
     }
 
     public World getWorld() {
         return world;
-    }
-
-    public void setWorld(World world) {
-        this.world = world;
-    }
-
-    public long getSeed() {
-        return seed;
-    }
-
-    public void setSeed(long seed) {
-        this.seed = seed;
     }
 
     public int getPriority() {

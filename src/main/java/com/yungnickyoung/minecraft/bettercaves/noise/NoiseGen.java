@@ -90,16 +90,16 @@ public class NoiseGen {
 
             for (int y = minHeight; y <= maxHeight; y++) {
                 for (int i = 0; i < numGenerators; i++) {
-                    double startValue = cube.getUnchecked(0, 0, y, i);
-                    double endValue = cube.getUnchecked(subChunkSize - 1, 0, y, i);
+                    float startValue = cube.getUnchecked(0, 0, y, i);
+                    float endValue = cube.getUnchecked(subChunkSize - 1, 0, y, i);
                     cube.setUnchecked(x, 0, y, i, startValue * startCoeff + endValue * endCoeff);
                 }
             }
 
             for (int y = minHeight; y <= maxHeight; y++) {
                 for (int i = 0; i < numGenerators; i++) {
-                    double startValue = cube.getUnchecked(0, subChunkSize - 1, y, i);
-                    double endValue = cube.getUnchecked(subChunkSize - 1, subChunkSize - 1, y, i);
+                    float startValue = cube.getUnchecked(0, subChunkSize - 1, y, i);
+                    float endValue = cube.getUnchecked(subChunkSize - 1, subChunkSize - 1, y, i);
                     cube.setUnchecked(x, subChunkSize - 1, y, i, startValue * startCoeff + endValue * endCoeff);
                 }
             }
@@ -113,8 +113,8 @@ public class NoiseGen {
 
                 for (int y = minHeight; y <= maxHeight; y++) {
                     for (int i = 0; i < numGenerators; i++) {
-                        double startValue = cube.getUnchecked(x, 0, y, i);
-                        double endValue = cube.getUnchecked(x, subChunkSize - 1, y, i);
+                        float startValue = cube.getUnchecked(x, 0, y, i);
+                        float endValue = cube.getUnchecked(x, subChunkSize - 1, y, i);
                         cube.setUnchecked(x, z, y, i, startValue * startCoeff + endValue * endCoeff);
                     }
                 }

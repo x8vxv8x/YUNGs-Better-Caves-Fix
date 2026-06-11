@@ -22,6 +22,10 @@ import java.util.Random;
  * Note -- this was made before my other mod, YUNG's Better Mineshafts, and is not related to it.
  */
 public class MapGenBetterMineshaft extends MapGenMineshaft {
+    static {
+        MapGenStructureIO.registerStructure(StructureBetterMineshaftStart.class, "Mineshaft");
+    }
+
     private MapGenBase defaultMineshaftGen;
     private int liquidAltitude;
 
@@ -31,10 +35,9 @@ public class MapGenBetterMineshaft extends MapGenMineshaft {
 
     @Override
     protected StructureStart getStructureStart(int chunkX, int chunkZ) {
-        MapGenStructureIO.registerStructure(StructureBetterMineshaftStart.class, "Mineshaft");
         Biome biome = this.world.getBiome(new BlockPos((chunkX << 4) + 8, 64, (chunkZ << 4) + 8));
         MapGenMineshaft.Type mapgenmineshaft$type = biome instanceof BiomeMesa ? MapGenMineshaft.Type.MESA : MapGenMineshaft.Type.NORMAL;
-        return new StructureBetterMineshaftStart(this.world, this.rand, chunkX, chunkZ, mapgenmineshaft$type);
+        return new StructureBetterMineshaftStart(this.world, this.rand, chunkX, chunkZ, mapgenmineshaft$type, liquidAltitude);
     }
 
 
@@ -60,9 +63,12 @@ public class MapGenBetterMineshaft extends MapGenMineshaft {
         this.liquidAltitude = config.liquidAltitude.get();
     }
 
-    private class StructureBetterMineshaftStart extends StructureMineshaftStart {
-        public StructureBetterMineshaftStart(World worldIn, Random rand, int chunkX, int chunkZ, MapGenMineshaft.Type type) {
+    private static class StructureBetterMineshaftStart extends StructureMineshaftStart {
+        private final int liquidAltitude;
+
+        public StructureBetterMineshaftStart(World worldIn, Random rand, int chunkX, int chunkZ, MapGenMineshaft.Type type, int liquidAltitude) {
             super(worldIn, rand, chunkX, chunkZ, type);
+            this.liquidAltitude = liquidAltitude;
         }
 
         @Override

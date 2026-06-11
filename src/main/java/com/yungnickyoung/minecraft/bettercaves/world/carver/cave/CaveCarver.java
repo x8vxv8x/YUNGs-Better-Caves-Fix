@@ -18,6 +18,8 @@ import net.minecraft.world.chunk.ChunkPrimer;
  * BetterCaves Cave carver
  */
 public class CaveCarver implements ICarver {
+    private static final int MAX_WORLD_HEIGHT = 256;
+
     private CarverSettings settings;
     private NoiseGen noiseGen;
     private World world;
@@ -42,6 +44,8 @@ public class CaveCarver implements ICarver {
 
     /** Adjustment value for the block two blocks above. Must be between 0 and 1.0 */
     private float yAdjustF2;
+
+    private final float[][] cachedThresholds = new float[MAX_WORLD_HEIGHT + 1][];
 
     public CaveCarver(final CaveCarverBuilder builder) {
         settings = builder.getSettings();
@@ -96,7 +100,7 @@ public class CaveCarver implements ICarver {
             transitionBoundary = 1;
 
         // Pre-compute thresholds to ensure accuracy during pre-processing
-        float[] thresholds = generateThresholds(topY, bottomY, transitionBoundary);
+        float[] thresholds = getThresholds(topY, bottomY, transitionBoundary);
 
         // Do some pre-processing on the noises to facilitate better cave generation.
         // Basically this makes caves taller to give players more headroom.
@@ -165,8 +169,8 @@ public class CaveCarver implements ICarver {
                 // Adjust block one above
                 if (realY < topY) {
                     for (int i = 0; i < numGens; i++) {
-                        double noise = noises.get(noiseX, noiseZ, realY, i);
-                        double noiseAbove = noises.get(noiseX, noiseZ, realY + 1, i);
+                        float noise = noises.get(noiseX, noiseZ, realY, i);
+                        float noiseAbove = noises.get(noiseX, noiseZ, realY + 1, i);
                         noises.set(noiseX, noiseZ, realY + 1, i, ((1 - f1) * noiseAbove) + (f1 * noise));
                     }
                 }
@@ -174,8 +178,8 @@ public class CaveCarver implements ICarver {
                 // Adjust block two above
                 if (realY < topY - 1) {
                     for (int i = 0; i < numGens; i++) {
-                        double noise = noises.get(noiseX, noiseZ, realY, i);
-                        double noiseTwoAbove = noises.get(noiseX, noiseZ, realY + 2, i);
+                        float noise = noises.get(noiseX, noiseZ, realY, i);
+                        float noiseTwoAbove = noises.get(noiseX, noiseZ, realY + 2, i);
                         noises.set(noiseX, noiseZ, realY + 2, i, ((1 - f2) * noiseTwoAbove) + (f2 * noise));
                     }
                 }
@@ -202,6 +206,19 @@ public class CaveCarver implements ICarver {
         }
 
         return thresholds;
+    }
+
+    private float[] getThresholds(int topY, int bottomY, int transitionBoundary) {
+        if (bottomY == this.bottomY && transitionBoundary == topY - surfaceCutoff) {
+            float[] thresholds = cachedThresholds[topY];
+            if (thresholds == null) {
+                thresholds = generateThresholds(topY, bottomY, transitionBoundary);
+                cachedThresholds[topY] = thresholds;
+            }
+            return thresholds;
+        }
+
+        return generateThresholds(topY, bottomY, transitionBoundary);
     }
 
     public NoiseGen getNoiseGen() {

@@ -125,23 +125,6 @@ public class CarverUtils {
     }
 
     /**
-     * Determine if the block at the specified location is the designated top block for the biome.
-     *
-     * @param world the Minecraft world this block is in
-     * @param primer the ChunkPrimer containing the block
-     * @param blockPos The block's position
-     * @return true if this block is the same type as the biome's designated top block
-     */
-    public static boolean isTopBlock(World world, ChunkPrimer primer, BlockPos blockPos) {
-        int localX = BetterCavesUtils.getLocal(blockPos.getX());
-        int localZ = BetterCavesUtils.getLocal(blockPos.getZ());
-        int y = blockPos.getY();
-        Biome biome = world.getBiome(blockPos);
-        IBlockState blockState = primer.getBlockState(localX, y, localZ);
-        return blockState == biome.topBlock;
-    }
-
-    /**
      * Determines if the Block of a given IBlockState is suitable to be replaced during cave generation.
      * Basically returns true for most common worldgen blocks (e.g. stone, dirt, sand), false if the block is air.
      *

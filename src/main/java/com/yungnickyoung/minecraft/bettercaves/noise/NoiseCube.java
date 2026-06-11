@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.bettercaves.noise;
 
 public class NoiseCube {
-    private final double[] values;
+    private final float[] values;
     private final int length;
     private final int minY;
     private final int maxY;
@@ -14,22 +14,22 @@ public class NoiseCube {
         this.maxY = maxY;
         this.height = maxY - minY + 1;
         this.numGenerators = numGenerators;
-        this.values = new double[edgeLength * edgeLength * height * numGenerators];
+        this.values = new float[edgeLength * edgeLength * height * numGenerators];
     }
 
-    public double get(int x, int z, int y, int generator) {
+    public float get(int x, int z, int y, int generator) {
         return values[index(x, z, y, generator)];
     }
 
-    public void set(int x, int z, int y, int generator, double value) {
+    public void set(int x, int z, int y, int generator, float value) {
         values[index(x, z, y, generator)] = value;
     }
 
-    public double getUnchecked(int x, int z, int y, int generator) {
+    public float getUnchecked(int x, int z, int y, int generator) {
         return values[uncheckedIndex(x, z, y, generator)];
     }
 
-    public void setUnchecked(int x, int z, int y, int generator, double value) {
+    public void setUnchecked(int x, int z, int y, int generator, float value) {
         values[uncheckedIndex(x, z, y, generator)] = value;
     }
 

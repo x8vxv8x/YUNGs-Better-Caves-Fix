@@ -262,7 +262,13 @@ public class CaveCarverController {
         }
         // Generate surface caves if enabled
         if (isSurfaceCavesEnabled) {
-            surfaceCaveCarver.generate(world, chunkX, chunkZ, primer, false, liquidBlocks, null, oceanMask);
+            boolean[][] surfaceCarvingMask = new boolean[16][16];
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    surfaceCarvingMask[x][z] = true;
+                }
+            }
+            surfaceCaveCarver.generate(world, chunkX, chunkZ, primer, false, liquidBlocks, surfaceCarvingMask, oceanMask);
         }
     }
 
