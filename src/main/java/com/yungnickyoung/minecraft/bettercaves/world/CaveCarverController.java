@@ -6,15 +6,14 @@ import com.yungnickyoung.minecraft.bettercaves.config.BCSettings;
 import com.yungnickyoung.minecraft.bettercaves.enums.CaveType;
 import com.yungnickyoung.minecraft.bettercaves.enums.RegionSize;
 import com.yungnickyoung.minecraft.bettercaves.noise.FastNoise;
+import com.yungnickyoung.minecraft.bettercaves.noise.ColumnNoiseBuffer;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverNoiseRange;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.ICarver;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.cave.CaveCarver;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.cave.CaveCarverBuilder;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.vanilla.VanillaCaveCarver;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.vanilla.VanillaCaveCarverBuilder;
-import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.ChunkPrimer;
 
@@ -22,6 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CaveCarverController {
+    private static final int[] FULL_CARVING_MASK_ROWS = buildFullCarvingMaskRows();
+
     private World world;
     private VanillaCaveCarver surfaceCaveCarver; // only used if surface caves enabled
     private FastNoise caveRegionController;
@@ -90,6 +91,9 @@ public class CaveCarverController {
         // Remove carvers with no priority
         carvers.removeIf(carver -> carver.getPriority() == 0);
         this.hasNonVanillaCaves = carvers.stream().anyMatch(carver -> carver instanceof CaveCarver);
+        if (carvers.isEmpty()) {
+            return;
+        }
 
         // Initialize vars for calculating controller noise thresholds
         float maxPossibleNoiseThreshold = config.caveSpawnChance.get() * .01f * 2 - 1;
@@ -114,12 +118,15 @@ public class CaveCarverController {
         }
     }
 
-    public void carveChunk(ChunkPrimer primer, int chunkX, int chunkZ, int[][] surfaceAltitudes, IBlockState[][] liquidBlocks, boolean[][] oceanMask) {
+    public void carveChunk(ChunkCaveContext chunkContext) {
         // Prevent unnecessary computation if caves are disabled
-        if (noiseRanges.size() == 0 && !isSurfaceCavesEnabled) {
+        if (noiseRanges.isEmpty() && !isSurfaceCavesEnabled) {
             return;
         }
 
+        ChunkPrimer primer = chunkContext.getPrimer();
+        int chunkX = chunkContext.getChunkX();
+        int chunkZ = chunkContext.getChunkZ();
         boolean flooded;
 
         // Flag to keep track of whether or not we've already carved vanilla caves for this chunk, since
@@ -128,12 +135,17 @@ public class CaveCarverController {
 
         // Since vanilla caves carve by chunk and not by column, we store an array
         // indicating which x-z coordinates are valid to be carved in
-        boolean[][] vanillaCarvingMask = new boolean[16][16];
+        int[] vanillaCarvingMaskRows = new int[16];
 
-        BlockPos.MutableBlockPos colPos = new BlockPos.MutableBlockPos();
+        if (noiseRanges.isEmpty()) {
+            surfaceCaveCarver.generate(world, chunkX, chunkZ, primer, false, chunkContext.getLiquidBlocksFlat(), FULL_CARVING_MASK_ROWS, chunkContext.getOceanMaskFlat(), chunkContext.getOceanMaskWidth(), chunkContext.getBiomes());
+            return;
+        }
+
         int subChunkCount = 16 / BCSettings.SUB_CHUNK_SIZE;
-        CarverNoiseRange[] activeRanges = new CarverNoiseRange[BCSettings.SUB_CHUNK_SIZE * BCSettings.SUB_CHUNK_SIZE];
-        int[] activeTopYs = new int[BCSettings.SUB_CHUNK_SIZE * BCSettings.SUB_CHUNK_SIZE];
+        SubChunkColumnFields fields = new SubChunkColumnFields();
+        fields.resetRanges(noiseRanges.size());
+        ColumnNoiseBuffer[] noiseBuffers = new ColumnNoiseBuffer[noiseRanges.size()];
 
         // Break into subchunks for noise interpolation
         for (int subX = 0; subX < subChunkCount; subX++) {
@@ -143,42 +155,34 @@ public class CaveCarverController {
                 int endX = startX + BCSettings.SUB_CHUNK_SIZE - 1;
                 int endZ = startZ + BCSettings.SUB_CHUNK_SIZE - 1;
 
-                noiseRanges.forEach(range -> range.setNoiseCube(null));
-                int activeColumnCount = 0;
+                fields.clear();
+                fields.resetRanges(noiseRanges.size());
 
                 for (int offsetX = 0; offsetX < BCSettings.SUB_CHUNK_SIZE; offsetX++) {
                     for (int offsetZ = 0; offsetZ < BCSettings.SUB_CHUNK_SIZE; offsetZ++) {
                         int columnIndex = offsetX * BCSettings.SUB_CHUNK_SIZE + offsetZ;
                         int localX = startX + offsetX;
                         int localZ = startZ + offsetZ;
-                        colPos.setPos(chunkX * 16 + localX, 1, chunkZ * 16 + localZ);
-                        activeRanges[columnIndex] = null;
-                        activeTopYs[columnIndex] = 0;
-                        flooded = isFloodedUndergroundEnabled && !isDebugViewEnabled && oceanMask != null && oceanMask[localX + 2][localZ + 2];
-                        if (flooded) {
-                            if (
-                                !oceanMask[localX + 3][localZ + 2] ||
-                                !oceanMask[localX + 2][localZ + 1] ||
-                                !oceanMask[localX + 1][localZ + 2] ||
-                                !oceanMask[localX + 2][localZ + 3]
-                            ) {
-                                continue;
-                            }
+                        int blockX = chunkContext.getBlockX(localX);
+                        int blockZ = chunkContext.getBlockZ(localZ);
+                        fields.clearColumn(columnIndex);
+                        flooded = isFloodedUndergroundEnabled && !isDebugViewEnabled && chunkContext.isOceanColumn(localX, localZ);
+                        if (flooded && !chunkContext.isSurroundedByOcean(localX, localZ)) {
+                            continue;
                         }
 
-                        int surfaceAltitude = surfaceAltitudes[localX][localZ];
-                        IBlockState liquidBlock = liquidBlocks[localX][localZ];
-
                         // Get noise values used to determine cave region
-                        float caveRegionNoise = caveRegionController.GetNoise(colPos.getX(), colPos.getZ());
+                        float caveRegionNoise = caveRegionController.GetNoise(blockX, blockZ);
 
                         // Carve cave using matching carver
-                        for (CarverNoiseRange range : noiseRanges) {
+                        for (int rangeIndex = 0; rangeIndex < noiseRanges.size(); rangeIndex++) {
+                            CarverNoiseRange range = noiseRanges.get(rangeIndex);
                             if (!range.contains(caveRegionNoise)) {
                                 continue;
                             }
                             if (range.getCarver() instanceof CaveCarver) {
                                 CaveCarver carver = (CaveCarver) range.getCarver();
+                                int surfaceAltitude = chunkContext.getSurfaceAltitude(localX, localZ);
                                 int topY = Math.min(surfaceAltitude, carver.getTopY());
                                 if (isOverrideSurfaceDetectionEnabled) {
                                     topY = carver.getTopY();
@@ -186,13 +190,17 @@ public class CaveCarverController {
                                 if (isDebugViewEnabled) {
                                     topY = 128;
                                 }
-                                activeRanges[columnIndex] = range;
-                                activeTopYs[columnIndex] = topY;
-                                activeColumnCount++;
+                                if (topY < carver.getBottomY()) {
+                                    continue;
+                                }
+                                fields.activeRanges[columnIndex] = range;
+                                fields.topYs[columnIndex] = topY;
+                                fields.flooded[columnIndex] = flooded;
+                                fields.addActiveColumn(columnIndex, rangeIndex);
                                 break;
                             }
                             else if (range.getCarver() instanceof VanillaCaveCarver) {
-                                vanillaCarvingMask[localX][localZ] = true;
+                                vanillaCarvingMaskRows[localX] |= 1 << localZ;
                                 shouldCarveVanillaCaves = true;
                                 break;
                             }
@@ -200,51 +208,55 @@ public class CaveCarverController {
                     }
                 }
 
-                for (CarverNoiseRange range : noiseRanges) {
+                for (int rangeIndex = 0; rangeIndex < noiseRanges.size(); rangeIndex++) {
+                    CarverNoiseRange range = noiseRanges.get(rangeIndex);
                     if (!(range.getCarver() instanceof CaveCarver)) {
                         continue;
                     }
 
                     CaveCarver carver = (CaveCarver) range.getCarver();
                     int neededMaxHeight = Integer.MIN_VALUE;
-                    for (int i = 0; i < activeRanges.length; i++) {
-                        if (activeRanges[i] == range) {
-                            neededMaxHeight = Math.max(neededMaxHeight, activeTopYs[i]);
-                        }
+                    int rangeCount = fields.getRangeCount(rangeIndex);
+                    int[] rangeColumns = fields.getRangeColumns(rangeIndex);
+                    for (int i = 0; i < rangeCount; i++) {
+                        int columnIndex = rangeColumns[i];
+                        neededMaxHeight = Math.max(neededMaxHeight, fields.topYs[columnIndex]);
                     }
                     if (neededMaxHeight == Integer.MIN_VALUE) {
                         continue;
                     }
 
-                    range.setNoiseCube(carver.getNoiseGen().interpolateNoiseCube(
-                        chunkX * 16 + startX,
-                        chunkX * 16 + endX,
-                        chunkZ * 16 + startZ,
-                        chunkZ * 16 + endZ,
+                    ColumnNoiseBuffer noiseBuffer = noiseBuffers[rangeIndex];
+                    if (noiseBuffer == null) {
+                        noiseBuffer = new ColumnNoiseBuffer();
+                        noiseBuffers[rangeIndex] = noiseBuffer;
+                    }
+                    carver.getNoiseGen().interpolateNoiseColumns(
+                        noiseBuffer,
+                        chunkContext.getBlockX(startX),
+                        chunkContext.getBlockX(endX),
+                        chunkContext.getBlockZ(startZ),
+                        chunkContext.getBlockZ(endZ),
                         carver.getBottomY(),
-                        neededMaxHeight
-                    ));
+                        neededMaxHeight,
+                        rangeColumns,
+                        rangeCount
+                    );
                 }
 
-                if (activeColumnCount == 0) {
+                if (fields.activeCount == 0) {
                     continue;
                 }
 
-                for (int offsetX = 0; offsetX < BCSettings.SUB_CHUNK_SIZE; offsetX++) {
-                    for (int offsetZ = 0; offsetZ < BCSettings.SUB_CHUNK_SIZE; offsetZ++) {
-                        int columnIndex = offsetX * BCSettings.SUB_CHUNK_SIZE + offsetZ;
-                        CarverNoiseRange activeRange = activeRanges[columnIndex];
-                        if (activeRange == null || !(activeRange.getCarver() instanceof CaveCarver)) {
-                            continue;
-                        }
-
-                        int localX = startX + offsetX;
-                        int localZ = startZ + offsetZ;
-                        colPos.setPos(chunkX * 16 + localX, 1, chunkZ * 16 + localZ);
-                        flooded = isFloodedUndergroundEnabled && !isDebugViewEnabled && oceanMask != null && oceanMask[localX + 2][localZ + 2];
-                        CaveCarver carver = (CaveCarver) activeRange.getCarver();
-                        carver.carveColumn(primer, colPos, activeTopYs[columnIndex], activeRange.getNoiseCube(), offsetX, offsetZ, liquidBlocks[localX][localZ], flooded);
-                    }
+                for (int i = 0; i < fields.activeCount; i++) {
+                    int columnIndex = fields.activeColumns[i];
+                    int offsetX = columnIndex / BCSettings.SUB_CHUNK_SIZE;
+                    int offsetZ = columnIndex % BCSettings.SUB_CHUNK_SIZE;
+                    CarverNoiseRange activeRange = fields.activeRanges[columnIndex];
+                    int localX = startX + offsetX;
+                    int localZ = startZ + offsetZ;
+                    CaveCarver carver = (CaveCarver) activeRange.getCarver();
+                    carver.carveColumn(primer, localX, localZ, fields.topYs[columnIndex], noiseBuffers[fields.rangeIndices[columnIndex]], fields.noiseSlots[columnIndex], chunkContext.getLiquidBlock(localX, localZ), fields.flooded[columnIndex], chunkContext.getBiome(localX, localZ));
                 }
             }
         }
@@ -257,19 +269,21 @@ public class CaveCarverController {
                 }
             }
             if (carver != null) {
-                carver.generate(world, chunkX, chunkZ, primer, true, liquidBlocks, vanillaCarvingMask, oceanMask);
+                carver.generate(world, chunkX, chunkZ, primer, true, chunkContext.getLiquidBlocksFlat(), vanillaCarvingMaskRows, chunkContext.getOceanMaskFlat(), chunkContext.getOceanMaskWidth(), chunkContext.getBiomes());
             }
         }
         // Generate surface caves if enabled
         if (isSurfaceCavesEnabled) {
-            boolean[][] surfaceCarvingMask = new boolean[16][16];
-            for (int x = 0; x < 16; x++) {
-                for (int z = 0; z < 16; z++) {
-                    surfaceCarvingMask[x][z] = true;
-                }
-            }
-            surfaceCaveCarver.generate(world, chunkX, chunkZ, primer, false, liquidBlocks, surfaceCarvingMask, oceanMask);
+            surfaceCaveCarver.generate(world, chunkX, chunkZ, primer, false, chunkContext.getLiquidBlocksFlat(), FULL_CARVING_MASK_ROWS, chunkContext.getOceanMaskFlat(), chunkContext.getOceanMaskWidth(), chunkContext.getBiomes());
         }
+    }
+
+    private static int[] buildFullCarvingMaskRows() {
+        int[] mask = new int[16];
+        for (int x = 0; x < 16; x++) {
+            mask[x] = 0xFFFF;
+        }
+        return mask;
     }
 
     /**
@@ -300,5 +314,19 @@ public class CaveCarverController {
 
     public boolean needsOceanMask() {
         return isFloodedUndergroundEnabled && hasWork();
+    }
+
+    public boolean needsBiomeCache() {
+        return hasWork();
+    }
+
+    public int getMaxSurfaceSearchY() {
+        int maxTopY = 0;
+        for (CarverNoiseRange range : noiseRanges) {
+            if (range.getCarver() instanceof CaveCarver) {
+                maxTopY = Math.max(maxTopY, range.getCarver().getTopY());
+            }
+        }
+        return isDebugViewEnabled ? Math.max(maxTopY, 128) : maxTopY;
     }
 }

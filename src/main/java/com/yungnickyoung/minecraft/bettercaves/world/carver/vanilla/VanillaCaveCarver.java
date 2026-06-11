@@ -1,21 +1,18 @@
 package com.yungnickyoung.minecraft.bettercaves.world.carver.vanilla;
 
 import com.yungnickyoung.minecraft.bettercaves.BetterCaves;
-import com.yungnickyoung.minecraft.bettercaves.util.BetterCavesUtils;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.CarverUtils;
 import com.yungnickyoung.minecraft.bettercaves.world.carver.ICarver;
+import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.chunk.ChunkPrimer;
 import net.minecraft.world.gen.MapGenCaves;
-import net.minecraftforge.common.BiomeDictionary;
 
 import javax.annotation.Nonnull;
-import java.util.Arrays;
 import java.util.Random;
 
 /**
@@ -60,7 +57,7 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
     /**
      * Calls recursiveGenerate() on all chunks within a certain square range (default 8) of this chunk.
      */
-    public void generate(World worldIn, int chunkX, int chunkZ, ChunkPrimer primer, boolean addRooms, IBlockState[][] liquidBlocks, boolean[][] carvingMask, boolean[][] oceanMask) {
+    public void generate(World worldIn, int chunkX, int chunkZ, ChunkPrimer primer, boolean addRooms, IBlockState[] liquidBlocks, int[] carvingMaskRows, boolean[] oceanMask, int oceanMaskWidth, Biome[] biomes) {
         int chunkRadius = this.range;
         this.world = worldIn;
         this.rand.setSeed(worldIn.getSeed());
@@ -71,16 +68,17 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
                 long j1 = (long) currChunkX * j;
                 long k1 = (long) currChunkZ * k;
                 this.rand.setSeed(j1 ^ k1 ^ worldIn.getSeed());
-                this.recursiveGenerate(currChunkX, currChunkZ, chunkX, chunkZ, primer, addRooms, liquidBlocks, carvingMask, oceanMask);
+                this.recursiveGenerate(currChunkX, currChunkZ, chunkX, chunkZ, primer, addRooms, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
             }
         }
     }
 
-    public void generate(World worldIn, int x, int z, ChunkPrimer primer, boolean addRooms, IBlockState[][] liquidBlocks) {
-        boolean[][] carvingMask = new boolean[16][16];
-        for (boolean[] row : carvingMask)
-            Arrays.fill(row, true);
-        generate(worldIn, x, z, primer, addRooms, liquidBlocks, carvingMask, null);
+    public void generate(World worldIn, int x, int z, ChunkPrimer primer, boolean addRooms, IBlockState[] liquidBlocks, Biome[] biomes) {
+        int[] carvingMaskRows = new int[16];
+        for (int i = 0; i < 16; i++) {
+            carvingMaskRows[i] = 0xFFFF;
+        }
+        generate(worldIn, x, z, primer, addRooms, liquidBlocks, carvingMaskRows, null, 0, biomes);
     }
 
     /**
@@ -89,7 +87,7 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
      * This means that when a chunk is checked multiple times by different neighbor chunks, each time it will be processed
      * the same way, ensuring the tunnels are always consistent and connecting.
      */
-    protected void recursiveGenerate(int chunkX, int chunkZ, int originalChunkX, int originalChunkZ, @Nonnull ChunkPrimer primer, boolean addRooms, IBlockState[][] liquidBlocks, boolean[][] carvingMask, boolean[][] oceanMask) {
+    protected void recursiveGenerate(int chunkX, int chunkZ, int originalChunkX, int originalChunkZ, @Nonnull ChunkPrimer primer, boolean addRooms, IBlockState[] liquidBlocks, int[] carvingMaskRows, boolean[] oceanMask, int oceanMaskWidth, Biome[] biomes) {
         int numAttempts = this.rand.nextInt(this.rand.nextInt(this.rand.nextInt(15) + 1) + 1);
 
         if (this.rand.nextInt(100) > this.density) {
@@ -104,7 +102,7 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
             int numAddTunnelCalls = 1;
 
             if (addRooms && this.rand.nextInt(4) == 0) {
-                this.addRoom(this.rand.nextLong(), originalChunkX, originalChunkZ, primer, caveStartX, caveStartY, caveStartZ, liquidBlocks, carvingMask, oceanMask);
+                this.addRoom(this.rand.nextLong(), originalChunkX, originalChunkZ, primer, caveStartX, caveStartY, caveStartZ, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
                 numAddTunnelCalls += this.rand.nextInt(4);
             }
 
@@ -120,7 +118,7 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
                     width *= this.rand.nextFloat() * this.rand.nextFloat() * 3.0F + 1.0F;
                 }
 
-                this.addTunnel(this.rand.nextLong(), originalChunkX, originalChunkZ, primer, caveStartX, caveStartY, caveStartZ, width, yaw, pitch, 0, 0, 1.0D, liquidBlocks, carvingMask, oceanMask);
+                this.addTunnel(this.rand.nextLong(), originalChunkX, originalChunkZ, primer, caveStartX, caveStartY, caveStartZ, width, yaw, pitch, 0, 0, 1.0D, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
             }
         }
     }
@@ -134,11 +132,11 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
         return this.topY;
     }
 
-    protected void addRoom(long seed, int originChunkX, int originChunkZ, ChunkPrimer primer, double caveStartX, double caveStartY, double caveStartZ, IBlockState[][] liquidBlocks, boolean[][] carvingMask, boolean[][] oceanMask) {
-        this.addTunnel(seed, originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, 1.0F + this.rand.nextFloat() * 6.0F, 0.0F, 0.0F, -1, -1, 0.5D, liquidBlocks, carvingMask, oceanMask);
+    protected void addRoom(long seed, int originChunkX, int originChunkZ, ChunkPrimer primer, double caveStartX, double caveStartY, double caveStartZ, IBlockState[] liquidBlocks, int[] carvingMaskRows, boolean[] oceanMask, int oceanMaskWidth, Biome[] biomes) {
+        this.addTunnel(seed, originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, 1.0F + this.rand.nextFloat() * 6.0F, 0.0F, 0.0F, -1, -1, 0.5D, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
     }
 
-    protected void addTunnel(long seed, int originChunkX, int originChunkZ, ChunkPrimer primer, double caveStartX, double caveStartY, double caveStartZ, float width, float yaw, float pitch, int startCounter, int endCounter, double heightModifier, IBlockState[][] liquidBlocks, boolean[][] carvingMask, boolean[][] oceanMask) {
+    protected void addTunnel(long seed, int originChunkX, int originChunkZ, ChunkPrimer primer, double caveStartX, double caveStartY, double caveStartZ, float width, float yaw, float pitch, int startCounter, int endCounter, double heightModifier, IBlockState[] liquidBlocks, int[] carvingMaskRows, boolean[] oceanMask, int oceanMaskWidth, Biome[] biomes) {
         IBlockState liquidBlock;
         Random random = new Random(seed);
 
@@ -205,8 +203,8 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
             yawModifier = yawModifier + (random.nextFloat() - random.nextFloat()) * random.nextFloat() * 4.0F;
 
             if (!comesFromRoom && startCounter == randomCounterValue && width > 1.0F && endCounter > 0) {
-                this.addTunnel(random.nextLong(), originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, random.nextFloat() * 0.5F + 0.5F, yaw - ((float) Math.PI / 2F), pitch / 3.0F, startCounter, endCounter, 1.0D, liquidBlocks, carvingMask, oceanMask);
-                this.addTunnel(random.nextLong(), originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, random.nextFloat() * 0.5F + 0.5F, yaw + ((float) Math.PI / 2F), pitch / 3.0F, startCounter, endCounter, 1.0D, liquidBlocks, carvingMask, oceanMask);
+                this.addTunnel(random.nextLong(), originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, random.nextFloat() * 0.5F + 0.5F, yaw - ((float) Math.PI / 2F), pitch / 3.0F, startCounter, endCounter, 1.0D, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
+                this.addTunnel(random.nextLong(), originChunkX, originChunkZ, primer, caveStartX, caveStartY, caveStartZ, random.nextFloat() * 0.5F + 0.5F, yaw + ((float) Math.PI / 2F), pitch / 3.0F, startCounter, endCounter, 1.0D, liquidBlocks, carvingMaskRows, oceanMask, oceanMaskWidth, biomes);
                 return;
             }
 
@@ -265,11 +263,16 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
                             double zAxisDist = ((double) (currZ + originChunkZ * 16) + 0.5D - caveStartZ) / xzOffset;
 
                             // Skip column if carving mask not set
-                            if (!carvingMask[currX][currZ])
+                            if ((carvingMaskRows[currX] & (1 << currZ)) == 0)
                                 continue;
 
                             // Only operate on points within ellipse on XZ axis. Avoids unnecessary computation along y axis
                             if (xAxisDist * xAxisDist + zAxisDist * zAxisDist < 1.0D) {
+                                int columnIndex = currX * 16 + currZ;
+                                Biome biome = biomes[columnIndex];
+                                IBlockState biomeTopState = biome.topBlock;
+                                Block biomeTopBlock = biomeTopState.getBlock();
+                                Block biomeFillerBlock = biome.fillerBlock.getBlock();
                                 for (int currY = maxY; currY > minY; --currY) {
                                     // Distance along the y-axis from the center (caveStart) of this ellipsoid.
                                     // You can think of this value as (y/c), where c is the length of the ellipsoid's semi-axis in the y direction.
@@ -279,11 +282,11 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
                                     // This conditional is validating the current coordinate against the equation of the ellipsoid, that is,
                                     // (x/a)^2 + (z/b)^2 + (y/c)^2 <= 1.
                                     if (yAxisDist > -0.7D && xAxisDist * xAxisDist + yAxisDist * yAxisDist + zAxisDist * zAxisDist < 1.0D) {
-                                        liquidBlock = liquidBlocks[currX][currZ];
+                                        liquidBlock = liquidBlocks[columnIndex];
                                         if (this.isDebugVisualizerEnabled)
                                             CarverUtils.debugDigBlock(primer, currX, currY, currZ, debugBlock, true);
                                         else
-                                            digBlock(world, primer, originChunkX, originChunkZ, currX, currY, currZ, liquidBlock, this.liquidAltitude, this.isReplaceGravel, oceanMask);
+                                            digBlock(world, primer, currX, currY, currZ, liquidBlock, this.liquidAltitude, this.isReplaceGravel, oceanMask, oceanMaskWidth, biomeTopState, biomeTopBlock, biomeFillerBlock);
                                     } else {
                                         if (this.isDebugVisualizerEnabled)
                                             CarverUtils.debugDigBlock(primer, currX, currY, currZ, debugBlock, false);
@@ -302,40 +305,35 @@ public class VanillaCaveCarver extends MapGenCaves implements ICarver {
         }
     }
 
-    private void digBlock(World world, ChunkPrimer primer, int chunkX, int chunkZ, int localX, int y, int localZ, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel, boolean[][] oceanMask) {
-        int worldX = chunkX * 16 + localX;
-        int worldZ = chunkZ * 16 + localZ;
+    private void digBlock(World world, ChunkPrimer primer, int localX, int y, int localZ, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel, boolean[] oceanMask, int oceanMaskWidth, IBlockState biomeTopState, Block biomeTopBlock, Block biomeFillerBlock) {
         // Don't dig boundaries between flooded and unflooded openings.
-        boolean flooded = isFloodedUndergroundEnabled && !isDebugVisualizerEnabled && y < world.getSeaLevel() && isOceanColumn(world, worldX, worldZ, localX, localZ, oceanMask);
+        boolean flooded = isFloodedUndergroundEnabled && !isDebugVisualizerEnabled && y < world.getSeaLevel() && isOceanColumn(localX, localZ, oceanMask, oceanMaskWidth);
 
         if (flooded) {
             if (
-                !isOceanColumn(world, worldX + 1, worldZ, localX + 1, localZ, oceanMask) ||
-                !isOceanColumn(world, worldX, worldZ - 1, localX, localZ - 1, oceanMask) ||
-                !isOceanColumn(world, worldX - 1, worldZ, localX - 1, localZ, oceanMask) ||
-                !isOceanColumn(world, worldX, worldZ + 1, localX, localZ + 1, oceanMask)
+                !isOceanColumn(localX + 1, localZ, oceanMask, oceanMaskWidth) ||
+                !isOceanColumn(localX, localZ - 1, oceanMask, oceanMaskWidth) ||
+                !isOceanColumn(localX - 1, localZ, oceanMask, oceanMaskWidth) ||
+                !isOceanColumn(localX, localZ + 1, oceanMask, oceanMaskWidth)
             ) {
                 return;
             }
         }
 
         IBlockState airBlockState = flooded ? WATER : AIR;
-        if (oceanMask != null) {
-            BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(worldX, y, worldZ);
-            CarverUtils.digBlock(world, primer, worldX, y, worldZ, world.getBiome(blockPos), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
-        }
-        else {
-            CarverUtils.digBlock(world, primer, worldX, y, worldZ, airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
-        }
+        CarverUtils.digBlockLocal(primer, localX, y, localZ, biomeTopState, biomeTopBlock, biomeFillerBlock, airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
     }
 
-    private boolean isOceanColumn(World world, int worldX, int worldZ, int localX, int localZ, boolean[][] oceanMask) {
-        if (oceanMask != null && localX >= 0 && localX < 16 && localZ >= 0 && localZ < 16) {
-            return oceanMask[localX + 2][localZ + 2];
+    private boolean isOceanColumn(int localX, int localZ, boolean[] oceanMask, int oceanMaskWidth) {
+        if (oceanMask != null) {
+            int maskX = localX + 2;
+            int maskZ = localZ + 2;
+            if (maskX >= 0 && maskX < oceanMaskWidth && maskZ >= 0 && maskZ < oceanMaskWidth) {
+                return oceanMask[maskX * oceanMaskWidth + maskZ];
+            }
         }
 
-        BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos(worldX, world.getSeaLevel(), worldZ);
-        return BiomeDictionary.hasType(world.getBiome(biomePos), BiomeDictionary.Type.OCEAN);
+        return false;
     }
 
     @Override

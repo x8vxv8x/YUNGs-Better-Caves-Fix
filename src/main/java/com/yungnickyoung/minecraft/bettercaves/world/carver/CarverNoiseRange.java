@@ -1,10 +1,9 @@
 package com.yungnickyoung.minecraft.bettercaves.world.carver;
 
-import com.yungnickyoung.minecraft.bettercaves.noise.NoiseCube;
 import com.yungnickyoung.minecraft.bettercaves.noise.NoiseUtils;
 
 /**
- * Couples the bounds of a particular range of noise values with a NoiseCube and carver.
+ * Couples the bounds of a particular range of noise values with a carver.
  * Having these pieces of information in one place is kind of bad practice, but proves to be very
  * convenient in the Carver Controllers.
  *
@@ -22,9 +21,6 @@ public class CarverNoiseRange {
     // The carver associated with this range of noises.
     private ICarver carver;
 
-    // The NoiseCube associated with this range of noises.
-    private NoiseCube noiseCube;
-
     // The degree of smoothing on cavern edges. For a given SMOOTH_PERCENT x, both the
     // bottom and top ends of the noise range are each smoothed by (x * 100) percent.
     private static final float SMOOTH_PERCENT = .3f;
@@ -36,7 +32,6 @@ public class CarverNoiseRange {
         this.smoothBottomCutoff = NoiseUtils.simplexNoiseOffsetByPercent(bottom, smoothRangePercent);
         this.smoothTopCutoff = NoiseUtils.simplexNoiseNegativeOffsetByPercent(top, smoothRangePercent);
         this.carver = carver;
-        this.noiseCube = null;
     }
 
     public boolean contains(float noiseValue) {
@@ -44,10 +39,10 @@ public class CarverNoiseRange {
     }
 
     public float getSmoothAmp(float noiseValue) {
-        if (bottom <= noiseValue && noiseValue <= smoothBottomCutoff) {
+        if (smoothBottomCutoff != bottom && bottom <= noiseValue && noiseValue <= smoothBottomCutoff) {
             return (noiseValue - bottom) / (smoothBottomCutoff - bottom);
         }
-        else if (smoothTopCutoff <= noiseValue && noiseValue < top) {
+        else if (smoothTopCutoff != top && smoothTopCutoff <= noiseValue && noiseValue < top) {
             return (noiseValue - top) / (smoothTopCutoff - top);
         }
         return 1;
@@ -59,14 +54,6 @@ public class CarverNoiseRange {
 
     public ICarver getCarver() {
         return carver;
-    }
-
-    public NoiseCube getNoiseCube() {
-        return noiseCube;
-    }
-
-    public void setNoiseCube(NoiseCube noiseCube) {
-        this.noiseCube = noiseCube;
     }
 
     @Override

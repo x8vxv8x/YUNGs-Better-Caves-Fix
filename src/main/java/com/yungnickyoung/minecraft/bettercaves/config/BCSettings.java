@@ -11,7 +11,6 @@ import com.yungnickyoung.minecraft.bettercaves.Tags;
 public class BCSettings {
     /** MOD INFORMATION CONSTANTS
      * These will not be used if USE_META_DATA is true. Instead, data will be used from resources/mcmod.info.
-     * Strings like {@varName} are set from the gradle build script.
      */
     public static final boolean USE_META_DATA = true;
     public static final String MOD_ID = Tags.MOD_ID;
@@ -24,6 +23,7 @@ public class BCSettings {
     public static final String CUSTOM_CONFIG_PATH = "bettercaves-1_12_2";
 
     public static final int SUB_CHUNK_SIZE = 4;
+    public static final int NOISE_VERTICAL_SAMPLE_STEP = 4;
     public static final float[] START_COEFFS = new float[SUB_CHUNK_SIZE];
     public static final float[] END_COEFFS = new float[SUB_CHUNK_SIZE];
 

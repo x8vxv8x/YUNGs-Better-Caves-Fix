@@ -452,6 +452,101 @@ public class ConfigHolder {
     public ConfigOption<Integer>             flooredCavernNumGenerators;
     public ConfigOption<FastNoise.NoiseType> flooredCavernNoiseType;
 
+    public ConfigHolder sanitize() {
+        clampFloat(caveSpawnChance, 0, 100);
+        clampFloat(caveRegionCustomSize, 0, .05f);
+        clampFloat(cavernSpawnChance, 0, 100);
+        clampFloat(cavernRegionCustomSize, 0, .05f);
+        clampFloat(waterRegionSpawnChance, 0, 100);
+        clampFloat(waterRegionCustomSize, 0, .05f);
+
+        clampInt(liquidAltitude, 0, 255);
+        clampInt(bedrockWidth, 0, 256);
+
+        sanitizeCaveSettings(cubicCaveBottom, cubicCaveTop, cubicCaveSurfaceCutoffDepth, cubicCavePriority,
+            cubicCaveYCompression, cubicCaveXZCompression, cubicCaveNoiseThreshold, cubicCaveFractalOctaves,
+            cubicCaveFractalGain, cubicCaveFractalFrequency, cubicCaveNumGenerators, cubicCaveYAdjustF1, cubicCaveYAdjustF2);
+        sanitizeCaveSettings(simplexCaveBottom, simplexCaveTop, simplexCaveSurfaceCutoffDepth, simplexCavePriority,
+            simplexCaveYCompression, simplexCaveXZCompression, simplexCaveNoiseThreshold, simplexCaveFractalOctaves,
+            simplexCaveFractalGain, simplexCaveFractalFrequency, simplexCaveNumGenerators, simplexCaveYAdjustF1, simplexCaveYAdjustF2);
+
+        sanitizeVanillaSettings(surfaceCaveBottom, surfaceCaveTop, surfaceCaveDensity, null);
+        sanitizeVanillaSettings(vanillaCaveBottom, vanillaCaveTop, vanillaCaveDensity, vanillaCavePriority);
+
+        sanitizeCavernSettings(liquidCavernBottom, liquidCavernTop, liquidCavernPriority,
+            liquidCavernYCompression, liquidCavernXZCompression, liquidCavernNoiseThreshold, liquidCavernFractalOctaves,
+            liquidCavernFractalGain, liquidCavernFractalFrequency, liquidCavernNumGenerators);
+        sanitizeCavernSettings(flooredCavernBottom, flooredCavernTop, flooredCavernPriority,
+            flooredCavernYCompression, flooredCavernXZCompression, flooredCavernNoiseThreshold, flooredCavernFractalOctaves,
+            flooredCavernFractalGain, flooredCavernFractalFrequency, flooredCavernNumGenerators);
+
+        return this;
+    }
+
+    private void sanitizeCaveSettings(ConfigOption<Integer> bottomY, ConfigOption<Integer> topY,
+                                      ConfigOption<Integer> surfaceCutoff, ConfigOption<Integer> priority,
+                                      ConfigOption<Float> yCompression, ConfigOption<Float> xzCompression,
+                                      ConfigOption<Float> noiseThreshold, ConfigOption<Integer> fractalOctaves,
+                                      ConfigOption<Float> fractalGain, ConfigOption<Float> fractalFrequency,
+                                      ConfigOption<Integer> numGenerators, ConfigOption<Float> yAdjustF1,
+                                      ConfigOption<Float> yAdjustF2) {
+        normalizeAltitudePair(bottomY, topY);
+        clampInt(surfaceCutoff, 0, 255);
+        clampInt(priority, 0, 10);
+        clampFloat(yCompression, .0001f, 100);
+        clampFloat(xzCompression, .0001f, 100);
+        clampFloat(noiseThreshold, -1, 1);
+        clampInt(fractalOctaves, 1, 8);
+        clampFloat(fractalGain, 0, 1);
+        clampFloat(fractalFrequency, 0, 1);
+        clampInt(numGenerators, 1, 4);
+        clampFloat(yAdjustF1, 0, 1);
+        clampFloat(yAdjustF2, 0, 1);
+    }
+
+    private void sanitizeCavernSettings(ConfigOption<Integer> bottomY, ConfigOption<Integer> topY,
+                                        ConfigOption<Integer> priority, ConfigOption<Float> yCompression,
+                                        ConfigOption<Float> xzCompression, ConfigOption<Float> noiseThreshold,
+                                        ConfigOption<Integer> fractalOctaves, ConfigOption<Float> fractalGain,
+                                        ConfigOption<Float> fractalFrequency, ConfigOption<Integer> numGenerators) {
+        normalizeAltitudePair(bottomY, topY);
+        clampInt(priority, 0, 10);
+        clampFloat(yCompression, .0001f, 100);
+        clampFloat(xzCompression, .0001f, 100);
+        clampFloat(noiseThreshold, -1, 1);
+        clampInt(fractalOctaves, 1, 8);
+        clampFloat(fractalGain, 0, 1);
+        clampFloat(fractalFrequency, 0, 1);
+        clampInt(numGenerators, 1, 4);
+    }
+
+    private void sanitizeVanillaSettings(ConfigOption<Integer> bottomY, ConfigOption<Integer> topY,
+                                         ConfigOption<Integer> density, ConfigOption<Integer> priority) {
+        normalizeAltitudePair(bottomY, topY);
+        clampInt(density, 0, 100);
+        if (priority != null) {
+            clampInt(priority, 0, 10);
+        }
+    }
+
+    private void normalizeAltitudePair(ConfigOption<Integer> bottomY, ConfigOption<Integer> topY) {
+        clampInt(bottomY, 0, 255);
+        clampInt(topY, 0, 255);
+        if (bottomY.get() > topY.get()) {
+            int bottom = bottomY.get();
+            bottomY.set(topY.get());
+            topY.set(bottom);
+        }
+    }
+
+    private void clampInt(ConfigOption<Integer> option, int min, int max) {
+        option.set(Math.max(min, Math.min(max, option.get())));
+    }
+
+    private void clampFloat(ConfigOption<Float> option, float min, float max) {
+        option.set(Math.max(min, Math.min(max, option.get())));
+    }
+
     public static class ConfigOption<T> {
         public String name;
         public String fullName;

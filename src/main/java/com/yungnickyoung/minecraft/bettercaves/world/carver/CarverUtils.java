@@ -8,8 +8,6 @@ import net.minecraft.block.BlockStone;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.chunk.ChunkPrimer;
 
@@ -24,37 +22,27 @@ public class CarverUtils {
     /* IBlockStates used in this class */
     private static final IBlockState AIR = Blocks.AIR.getDefaultState();
     private static final IBlockState SAND = Blocks.SAND.getDefaultState();
+    private static final IBlockState RED_SAND = Blocks.SAND.getDefaultState().withProperty(BlockSand.VARIANT, BlockSand.EnumType.RED_SAND);
     private static final IBlockState SANDSTONE = Blocks.SANDSTONE.getDefaultState();
     private static final IBlockState REDSANDSTONE = Blocks.RED_SANDSTONE.getDefaultState();
     private static final IBlockState GRAVEL = Blocks.GRAVEL.getDefaultState();
+    private static final IBlockState BEDROCK = Blocks.BEDROCK.getDefaultState();
+    private static final IBlockState LOG = Blocks.LOG.getDefaultState();
+    private static final IBlockState LOG2 = Blocks.LOG2.getDefaultState();
     private static final IBlockState ANDESITE = Blocks.STONE.getDefaultState().withProperty(BlockStone.VARIANT, BlockStone.EnumType.ANDESITE);
     private static final ImmutableSet<IBlockState> DEBUG_BLOCKS = ImmutableSet.of(Blocks.GOLD_BLOCK.getDefaultState(), Blocks.PLANKS.getDefaultState(), Blocks.COBBLESTONE.getDefaultState(), Blocks.REDSTONE_BLOCK.getDefaultState(), Blocks.EMERALD_BLOCK.getDefaultState(), Blocks.BRICK_BLOCK.getDefaultState());
 
-    /**
-     * Digs out the current block, default implementation removes stone, filler, and top block.
-     * Sets the block to lavaBlockState if y is less then the liquidAltitude in the Config, and air other wise.
-     * If setting to air, it also checks to see if we've broken the surface, and if so,
-     * tries to make the floor the biome's top block.
-     *
-     * @param world the Minecraft world this block is in
-     * @param primer the ChunkPrimer containing the block
-     * @param blockPos The block's position
-     * @param airBlockState the BlockState to use for air.
-     * @param liquidBlockState the BlockState to use for liquids. May be null if in buffer zone between liquid regions
-     * @param liquidAltitude altitude at and below which air is replaced with liquidBlockState
-     */
-    public static void digBlock(World world, ChunkPrimer primer, BlockPos blockPos, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        digBlock(world, primer, blockPos.getX(), blockPos.getY(), blockPos.getZ(), world.getBiome(blockPos), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
+    public static void digBlockLocal(ChunkPrimer primer, int localX, int y, int localZ, Biome biome, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
+        digBlockLocal(primer, localX, y, localZ, biome.topBlock, biome.topBlock.getBlock(), biome.fillerBlock.getBlock(), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
     }
 
-    public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, Biome biome, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        int localX = BetterCavesUtils.getLocal(x);
-        int localZ = BetterCavesUtils.getLocal(z);
+    public static void digBlockLocal(ChunkPrimer primer, int localX, int y, int localZ, IBlockState biomeTopState, Block biomeTopBlock, Block biomeFillerBlock, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
+        if (y < 0 || y > 255) {
+            return;
+        }
 
         IBlockState blockState = primer.getBlockState(localX, y, localZ);
-        IBlockState blockStateAbove = primer.getBlockState(localX, y + 1, localZ);
-        Block biomeTopBlock = biome.topBlock.getBlock();
-        Block biomeFillerBlock = biome.fillerBlock.getBlock();
+        IBlockState blockStateAbove = y < 255 ? primer.getBlockState(localX, y + 1, localZ) : AIR;
 
         // Only continue if the block is replaceable
         if (canReplaceBlock(blockState, blockStateAbove) || blockState.getBlock() == biomeTopBlock || blockState.getBlock() == biomeFillerBlock) {
@@ -68,17 +56,17 @@ public class CarverUtils {
                 if (airBlockState == AIR && isWaterAdjacent(primer, localX, y, localZ)) return;
 
                 // Adjust block below if block removed is biome top block
-                if (blockState == biome.topBlock && canReplaceBlock(primer.getBlockState(localX, y - 1, localZ), AIR))
-                    primer.setBlockState(localX, y - 1, localZ, biome.topBlock);
+                if (y > 0 && blockState == biomeTopState && canReplaceBlock(primer.getBlockState(localX, y - 1, localZ), AIR))
+                    primer.setBlockState(localX, y - 1, localZ, biomeTopState);
 
                 // Replace floating sand with sandstone
-                if (blockStateAbove == SAND)
+                if (y < 255 && blockStateAbove == SAND)
                     primer.setBlockState(localX, y + 1, localZ, SANDSTONE);
-                else if (blockStateAbove == SAND.withProperty(BlockSand.VARIANT, BlockSand.EnumType.RED_SAND))
+                else if (y < 255 && blockStateAbove == RED_SAND)
                     primer.setBlockState(localX, y + 1, localZ, REDSANDSTONE);
 
                 // Replace floating gravel with andesite, if enabled
-                if (replaceGravel && blockStateAbove == GRAVEL)
+                if (y < 255 && replaceGravel && blockStateAbove == GRAVEL)
                     primer.setBlockState(localX, y + 1, localZ, ANDESITE);
 
                 // Replace this block with air, effectively "digging" it out
@@ -87,34 +75,16 @@ public class CarverUtils {
         }
     }
 
-    public static void digBlock(World world, ChunkPrimer primer, BlockPos blockPos, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        digBlock(world, primer, blockPos, AIR, liquidBlockState, liquidAltitude, replaceGravel);
-    }
-
-    public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(x, y, z);
-        digBlock(world, primer, x, y, z, world.getBiome(blockPos), AIR, liquidBlockState, liquidAltitude, replaceGravel);
-    }
-
-    public static void digBlock(World world, ChunkPrimer primer, int x, int y, int z, IBlockState airBlockState, IBlockState liquidBlockState, int liquidAltitude, boolean replaceGravel) {
-        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(x, y, z);
-        digBlock(world, primer, x, y, z, world.getBiome(blockPos), airBlockState, liquidBlockState, liquidAltitude, replaceGravel);
-    }
-
-    /**
-     * DEBUG method for visualizing cave systems. Used as a replacement for the {@code digBlock} method if the
-     * debugVisualizer config option is enabled.
-     * @param primer Chunk containing the block
-     * @param blockPos block position
-     * @param blockState The blockState to set dug out blocks to
-     */
-    public static void debugDigBlock(ChunkPrimer primer, BlockPos blockPos, IBlockState blockState, boolean digBlock) {
-        debugDigBlock(primer, blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockState, digBlock);
-    }
-
     public static void debugDigBlock(ChunkPrimer primer, int x, int y, int z, IBlockState blockState, boolean digBlock) {
         int localX = BetterCavesUtils.getLocal(x);
         int localZ = BetterCavesUtils.getLocal(z);
+        debugDigBlockLocal(primer, localX, y, localZ, blockState, digBlock);
+    }
+
+    public static void debugDigBlockLocal(ChunkPrimer primer, int localX, int y, int localZ, IBlockState blockState, boolean digBlock) {
+        if (y < 0 || y > 255) {
+            return;
+        }
 
         if (DEBUG_BLOCKS.contains(primer.getBlockState(localX, y, localZ))) return;
 
@@ -134,6 +104,8 @@ public class CarverUtils {
      */
     public static boolean canReplaceBlock(IBlockState blockState, IBlockState blockStateAbove) {
         Block block = blockState.getBlock();
+        if (block == Blocks.STONE || blockState.getMaterial() == Material.ROCK)
+            return blockState != BEDROCK;
 
         // Avoid damaging trees
         if (block == Blocks.LEAVES
@@ -143,21 +115,17 @@ public class CarverUtils {
             return false;
 
         // Avoid digging out under trees
-        if (blockStateAbove == Blocks.LOG.getDefaultState()
-                || blockStateAbove == Blocks.LOG2.getDefaultState())
+        if (blockStateAbove == LOG
+                || blockStateAbove == LOG2)
             return false;
 
         // Don't mine bedrock
-        if (blockState == Blocks.BEDROCK.getDefaultState())
+        if (blockState == BEDROCK)
             return false;
 
         // Accept stone-like blocks added from other mods
-        if (blockState.getMaterial() == Material.ROCK)
-            return true;
-
         // Mine-able blocks
-        if (block == Blocks.STONE
-                || block == Blocks.DIRT
+        if (block == Blocks.DIRT
                 || block == Blocks.GRASS
                 || block == Blocks.HARDENED_CLAY
                 || block == Blocks.STAINED_HARDENED_CLAY
@@ -173,7 +141,7 @@ public class CarverUtils {
     }
 
     private static boolean isWaterAdjacent(ChunkPrimer primer, int localX, int y, int localZ) {
-        return primer.getBlockState(localX, y + 1, localZ).getMaterial() == Material.WATER
+        return y < 255 && primer.getBlockState(localX, y + 1, localZ).getMaterial() == Material.WATER
                 || localX < 15 && primer.getBlockState(localX + 1, y, localZ).getMaterial() == Material.WATER
                 || localX > 0 && primer.getBlockState(localX - 1, y, localZ).getMaterial() == Material.WATER
                 || localZ < 15 && primer.getBlockState(localX, y, localZ + 1).getMaterial() == Material.WATER

@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.bettercaves.noise;
 
 import com.yungnickyoung.minecraft.bettercaves.config.BCSettings;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
 /**
@@ -46,87 +45,82 @@ public class NoiseGen {
         initializeNoiseGens(isFastNoise);
     }
 
-    /**
-     * Generate noise values for a cube of blocks.
-     * Only columns of blocks at the four corners of each cube have noise values calculated for them.
-     * Blocks in between have noise values estimated via a naive implementation of trilinear interpolation.
-     * @param startPos Position of any block in the starting corner column of the cube.
-     *                 This column must have x and z coordinates lower than that of endPos.
-     * @param endPos   Position of any block in the ending corner column of the cube.
-     *                 This column must have x and z coordinates higher than that of startPos.
-     * @param minHeight The bottom y-coordinate to start generating noise values for
-     * @param maxHeight The top y-coordinate to stop generating noise values for
-     * @return NoiseCube
-     */
-    public NoiseCube interpolateNoiseCube(BlockPos startPos, BlockPos endPos, int minHeight, int maxHeight) {
-        return interpolateNoiseCube(startPos.getX(), endPos.getX(), startPos.getZ(), endPos.getZ(), minHeight, maxHeight);
-    }
-
-    public NoiseCube interpolateNoiseCube(int startX, int endX, int startZ, int endZ, int minHeight, int maxHeight) {
-        float startCoeff, endCoeff;
+    public ColumnNoiseBuffer interpolateNoiseColumns(ColumnNoiseBuffer buffer, int startX, int endX, int startZ, int endZ,
+                                                    int minHeight, int maxHeight, int[] activeColumns, int activeColumnCount) {
         int subChunkSize = endX - startX + 1;
         float noiseStartX = startX * xzCompression;
         float noiseEndX = endX * xzCompression;
         float noiseStartZ = startZ * xzCompression;
         float noiseEndZ = endZ * xzCompression;
-        NoiseCube cube = new NoiseCube(subChunkSize, minHeight, maxHeight, numGenerators);
+        buffer.reset(activeColumnCount, minHeight, maxHeight, numGenerators);
 
-        // Calculate noise values for the four corner columns.
-        for (int y = minHeight; y <= maxHeight; y++) {
+        int verticalStep = Math.max(1, BCSettings.NOISE_VERTICAL_SAMPLE_STEP);
+        int sampleCount = buffer.resetVerticalSamples(minHeight, maxHeight, verticalStep, numGenerators);
+        float[] corners = buffer.getSampledCornerValues();
+        int[] sampleYs = buffer.getSampleYs();
+        float[] values = buffer.values();
+        int height = buffer.getHeight();
+        int cornerStride = sampleCount * numGenerators;
+
+        for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+            int y = sampleYs[sampleIndex];
             float noiseY = y * yCompression;
+            int yOffset = sampleIndex * numGenerators;
             for (int i = 0; i < numGenerators; i++) {
                 INoiseLibrary noiseGen = noiseGens[i];
-                cube.setUnchecked(0, 0, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseStartZ));
-                cube.setUnchecked(0, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseStartX, noiseY, noiseEndZ));
-                cube.setUnchecked(subChunkSize - 1, 0, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseStartZ));
-                cube.setUnchecked(subChunkSize - 1, subChunkSize - 1, y, i, noiseGen.GetNoise(noiseEndX, noiseY, noiseEndZ));
+                int index = yOffset + i;
+                corners[index] = noiseGen.GetNoise(noiseStartX, noiseY, noiseStartZ);
+                corners[cornerStride + index] = noiseGen.GetNoise(noiseStartX, noiseY, noiseEndZ);
+                corners[cornerStride * 2 + index] = noiseGen.GetNoise(noiseEndX, noiseY, noiseStartZ);
+                corners[cornerStride * 3 + index] = noiseGen.GetNoise(noiseEndX, noiseY, noiseEndZ);
             }
         }
 
-        // Populate edge planes along x axis
-        for (int x = 1; x < subChunkSize - 1; x++) {
-            startCoeff = BCSettings.START_COEFFS[x];
-            endCoeff = BCSettings.END_COEFFS[x];
+        for (int columnSlot = 0; columnSlot < activeColumnCount; columnSlot++) {
+            int columnIndex = activeColumns[columnSlot];
+            int noiseX = columnIndex / BCSettings.SUB_CHUNK_SIZE;
+            int noiseZ = columnIndex % BCSettings.SUB_CHUNK_SIZE;
+            float startCoeffX = BCSettings.START_COEFFS[noiseX];
+            float endCoeffX = BCSettings.END_COEFFS[noiseX];
+            float startCoeffZ = BCSettings.START_COEFFS[noiseZ];
+            float endCoeffZ = BCSettings.END_COEFFS[noiseZ];
+            int columnBase = columnSlot * height * numGenerators;
 
-            for (int y = minHeight; y <= maxHeight; y++) {
-                for (int i = 0; i < numGenerators; i++) {
-                    float startValue = cube.getUnchecked(0, 0, y, i);
-                    float endValue = cube.getUnchecked(subChunkSize - 1, 0, y, i);
-                    cube.setUnchecked(x, 0, y, i, startValue * startCoeff + endValue * endCoeff);
-                }
-            }
+            for (int sampleIndex = 0; sampleIndex < sampleCount - 1; sampleIndex++) {
+                int yStart = sampleYs[sampleIndex];
+                int yEnd = sampleYs[sampleIndex + 1];
+                int segmentHeight = yEnd - yStart;
+                int fillEndY = sampleIndex == sampleCount - 2 ? yEnd : yEnd - 1;
+                int sampleOffsetStart = sampleIndex * numGenerators;
+                int sampleOffsetEnd = (sampleIndex + 1) * numGenerators;
 
-            for (int y = minHeight; y <= maxHeight; y++) {
-                for (int i = 0; i < numGenerators; i++) {
-                    float startValue = cube.getUnchecked(0, subChunkSize - 1, y, i);
-                    float endValue = cube.getUnchecked(subChunkSize - 1, subChunkSize - 1, y, i);
-                    cube.setUnchecked(x, subChunkSize - 1, y, i, startValue * startCoeff + endValue * endCoeff);
-                }
-            }
-        }
-
-        // Populate rest of cube by interpolating the two edge planes
-        for (int x = 0; x < subChunkSize; x++) {
-            for (int z = 1; z < subChunkSize - 1; z++) {
-                startCoeff = BCSettings.START_COEFFS[z];
-                endCoeff = BCSettings.END_COEFFS[z];
-
-                for (int y = minHeight; y <= maxHeight; y++) {
+                for (int y = yStart; y <= fillEndY; y++) {
+                    float yCoeff = segmentHeight == 0 ? 0 : (float)(y - yStart) / segmentHeight;
+                    int yOffset = (y - minHeight) * numGenerators;
                     for (int i = 0; i < numGenerators; i++) {
-                        float startValue = cube.getUnchecked(x, 0, y, i);
-                        float endValue = cube.getUnchecked(x, subChunkSize - 1, y, i);
-                        cube.setUnchecked(x, z, y, i, startValue * startCoeff + endValue * endCoeff);
+                        int startIndex = sampleOffsetStart + i;
+                        int endIndex = sampleOffsetEnd + i;
+                        float c00 = corners[startIndex] + (corners[endIndex] - corners[startIndex]) * yCoeff;
+                        float c01 = corners[cornerStride + startIndex] + (corners[cornerStride + endIndex] - corners[cornerStride + startIndex]) * yCoeff;
+                        float c10 = corners[cornerStride * 2 + startIndex] + (corners[cornerStride * 2 + endIndex] - corners[cornerStride * 2 + startIndex]) * yCoeff;
+                        float c11 = corners[cornerStride * 3 + startIndex] + (corners[cornerStride * 3 + endIndex] - corners[cornerStride * 3 + startIndex]) * yCoeff;
+                        float zStart = c00 * startCoeffX + c10 * endCoeffX;
+                        float zEnd = c01 * startCoeffX + c11 * endCoeffX;
+                        values[columnBase + yOffset + i] = zStart * startCoeffZ + zEnd * endCoeffZ;
                     }
                 }
             }
+
+            if (sampleCount == 1) {
+                for (int i = 0; i < numGenerators; i++) {
+                    float zStart = corners[i] * startCoeffX + corners[cornerStride * 2 + i] * endCoeffX;
+                    float zEnd = corners[cornerStride + i] * startCoeffX + corners[cornerStride * 3 + i] * endCoeffX;
+                    values[columnBase + i] = zStart * startCoeffZ + zEnd * endCoeffZ;
+                }
+            }
         }
 
-        return cube;
-    }
-
-    /* ------------------------- Public Getters -------------------------*/
-    public long getSeed() {
-        return seed;
+        return buffer;
     }
 
     /* ------------------------- Private Methods -------------------------*/

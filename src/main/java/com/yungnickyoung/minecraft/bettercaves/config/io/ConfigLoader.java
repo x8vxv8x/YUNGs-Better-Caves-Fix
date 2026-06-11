@@ -10,6 +10,7 @@ import net.minecraftforge.common.config.Property;
 import org.apache.commons.io.IOUtils;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Map;
@@ -34,12 +35,12 @@ public class ConfigLoader {
 
         if (!configFile.exists() || configFile.isDirectory()) {
             BetterCaves.LOGGER.info(String.format("Better Caves config file for dimension %d not found. Using global config...", dimensionID));
-            return new ConfigHolder();
+            return new ConfigHolder().sanitize();
         }
 
         if (!configFile.canRead()) {
             BetterCaves.LOGGER.warn(String.format("Better Caves config file for dimension %d not readable. Using global config...", dimensionID));
-            return new ConfigHolder();
+            return new ConfigHolder().sanitize();
         }
 
         BetterCaves.LOGGER.info(String.format("Reading Better Caves config from file for dimension %d...", dimensionID));
@@ -62,7 +63,7 @@ public class ConfigLoader {
         try {
             Map<String, ConfigCategory> categories = new TreeMap<>();
 
-            input = new Configuration.UnicodeInputStreamReader(new FileInputStream(file), DEFAULT_ENCODING);
+            input = new Configuration.UnicodeInputStreamReader(Files.newInputStream(file.toPath()), DEFAULT_ENCODING);
             buffer = new BufferedReader(input);
 
             String line;
@@ -153,7 +154,7 @@ public class ConfigLoader {
 
                                 Property prop = new Property(name, line.substring(i + 1), type, true);
                                 String fullName = currCategory.getQualifiedName() + "." + name;
-                                ConfigHolder.ConfigOption target = config.properties.get(fullName);
+                                ConfigHolder.ConfigOption<?> target = config.properties.get(fullName);
 
                                 if (target != null) {
                                     switch(type) {
@@ -182,7 +183,7 @@ public class ConfigLoader {
                                                 i = line.length();
                                                 continue;
                                             }
-                                            if (!(line.substring(i+ 1).toLowerCase().equals("true") || line.substring(i+1).toLowerCase().equals("false")))
+                                            if (!(line.substring(i+ 1).equalsIgnoreCase("true") || line.substring(i+1).equalsIgnoreCase("false")))
                                                 throw new RuntimeException(String.format("Invalid Boolean value for property '%s:%d'", fullName, lineNum));
                                             target.set(prop.getBoolean());
                                             break;
@@ -264,14 +265,14 @@ public class ConfigLoader {
                     tmpList.add(line.trim());
             }
         } catch (Exception e) {
-            BetterCaves.LOGGER.error(String.format("ERROR LOADING BETTER CAVES CONFIG %s: %s.", fileName, e.toString()));
+            BetterCaves.LOGGER.error(String.format("ERROR LOADING BETTER CAVES CONFIG %s: %s.", fileName, e));
             BetterCaves.LOGGER.info("USING GLOBAL CONFIG FILE INSTEAD...");
-            return new ConfigHolder();
+            return new ConfigHolder().sanitize();
         } finally {
             IOUtils.closeQuietly(buffer);
             IOUtils.closeQuietly(input);
         }
 
-        return config;
+        return config.sanitize();
     }
 }
